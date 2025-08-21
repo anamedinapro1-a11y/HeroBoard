@@ -52,29 +52,34 @@ def home():
       <body class="bg-slate-50 font-display text-[17px] sm:text-[18px]">
         <div id="root">Loading…</div>
 
-        <!-- ⭐️ IMPORTANT: react preset added -->
+        <!-- Use React preset so JSX compiles -->
         <script type="text/babel" data-presets="react">
           const { useState, useEffect, useMemo } = React;
           const GUIDE_PIN = "guide123";
 
           function App() {
+            // --- current user (who am I?) ---
+            const [user, setUser] = useState(() => localStorage.getItem("acton_user") || "");
+            useEffect(() => { localStorage.setItem("acton_user", user); }, [user]);
+
             const [guideMode, setGuideMode] = useState(false);
-            const [activeTab, setActiveTab] = useState("board");
+            const [activeTab, setActiveTab] = useState("board"); // 'board' | 'ann'
+
             return (
               <div className="min-h-screen">
                 <HeroHeader />
                 <div className="max-w-6xl mx-auto px-4 sm:px-6">
                   <TopBar
+                    user={user}
+                    setUser={setUser}
                     guideMode={guideMode}
                     setGuideMode={setGuideMode}
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                   />
-                  {activeTab === "board" ? (
-                    <CommunityServiceBoard outerGuideMode={guideMode} />
-                  ) : (
-                    <AnnouncementsBoard />
-                  )}
+                  {activeTab === "board"
+                    ? <CommunityServiceBoard currentUser={user} guideMode={guideMode} />
+                    : <AnnouncementsBoard currentUser={user} guideMode={guideMode} />}
                   <Footer />
                 </div>
               </div>
@@ -92,9 +97,10 @@ def home():
             );
           }
 
-          function TopBar({ guideMode, setGuideMode, activeTab, setActiveTab }) {
+          function TopBar({ user, setUser, guideMode, setGuideMode, activeTab, setActiveTab }) {
             const [asking, setAsking] = useState(false);
             const [pin, setPin] = useState("");
+
             return (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 -mt-8 sm:-mt-10 mb-6">
                 <div className="bg-white shadow-lg rounded-2xl p-1 inline-flex">
@@ -102,25 +108,38 @@ def home():
                   <TabButton active={activeTab === "ann"} onClick={() => setActiveTab("ann")}>Announcements</TabButton>
                 </div>
 
-                <div className="relative inline-block">
-                  <button
-                    onClick={() => (guideMode ? setGuideMode(false) : setAsking(true))}
-                    className={"px-4 py-2 rounded-2xl shadow-lg text-base " + (guideMode ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-white hover:bg-slate-50 border")}
-                  >
-                    {guideMode ? "Guide Mode: ON" : "Guide Mode"}
-                  </button>
-                  {asking && (
-                    <div className="absolute right-0 mt-2 w-72 bg-white border rounded-2xl shadow-xl p-4">
-                      <div className="font-semibold">Enter Guide PIN</div>
-                      <input value={pin} onChange={(e)=>setPin(e.target.value)} placeholder="e.g., guide123" className="w-full mt-2 px-3 py-2 border rounded-xl" />
-                      <div className="flex justify-end gap-2 mt-3">
-                        <button className="px-3 py-2 rounded-xl border" onClick={()=>setAsking(false)}>Cancel</button>
-                        <button className="px-3 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>{
-                          if(pin.trim()===GUIDE_PIN){ setGuideMode(true); setAsking(false); setPin(""); } else alert("Incorrect PIN");
-                        }}>Unlock</button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="bg-white border rounded-2xl shadow px-3 py-2 flex items-center gap-2">
+                    <span className="text-slate-500 text-sm">I am</span>
+                    <input
+                      value={user}
+                      onChange={(e)=>setUser(e.target.value)}
+                      placeholder="your name"
+                      className="px-2 py-1 border rounded-xl text-sm"
+                      style={{minWidth:"10rem"}}
+                    />
+                  </div>
+
+                  <div className="relative inline-block">
+                    <button
+                      onClick={() => (guideMode ? setGuideMode(false) : setAsking(true))}
+                      className={"px-4 py-2 rounded-2xl shadow-lg text-base " + (guideMode ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-white hover:bg-slate-50 border")}
+                    >
+                      {guideMode ? "Guide Mode: ON" : "Guide Mode"}
+                    </button>
+                    {asking && (
+                      <div className="absolute right-0 mt-2 w-72 bg-white border rounded-2xl shadow-xl p-4">
+                        <div className="font-semibold">Enter Guide PIN</div>
+                        <input value={pin} onChange={(e)=>setPin(e.target.value)} placeholder="e.g., guide123" className="w-full mt-2 px-3 py-2 border rounded-xl" />
+                        <div className="flex justify-end gap-2 mt-3">
+                          <button className="px-3 py-2 rounded-xl border" onClick={()=>setAsking(false)}>Cancel</button>
+                          <button className="px-3 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>{
+                            if(pin.trim()===GUIDE_PIN){ setGuideMode(true); setAsking(false); setPin(""); } else alert("Incorrect PIN");
+                          }}>Unlock</button>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -137,15 +156,15 @@ def home():
           function Footer() { return <div className="py-10 text-center text-sm text-slate-400">Made with ❤️ for Acton.</div>; }
 
           // -------- Community Service Board --------
-          function CommunityServiceBoard({ outerGuideMode }) {
+          function CommunityServiceBoard({ currentUser, guideMode }) {
             const [posts, setPosts] = useState(() => {
               const saved = localStorage.getItem("acton_cs_posts");
               if (saved) return JSON.parse(saved);
               return [
-                { id: crypto.randomUUID(), type: "student", creatorName: "Rafci", area: "Khan",  day: "19 de ago", time: "C.C 11:00", location: "C.C", notes: "", slots: 1, signups: [], createdAt: Date.now() },
-                { id: crypto.randomUUID(), type: "student", creatorName: "Paul",  area: "Khan",  day: "19 de ago", time: "C.C",        location: "C.C", notes: "", slots: 1, signups: [], createdAt: Date.now() },
-                { id: crypto.randomUUID(), type: "student", creatorName: "Anika", area: "Vocab", day: "21 de ago", time: "C.C",        location: "C.C", notes: "", slots: 1, signups: [], createdAt: Date.now() },
-                { id: crypto.randomUUID(), type: "guide",   creatorName: "Guide Team", area: "Library sorting", day: "Fri", time: "10:30–11:30", location: "Library", notes: "Need 2 volunteers", slots: 2, signups: [], createdAt: Date.now() },
+                { id: crypto.randomUUID(), type: "student", creatorName: "Rafci", area: "Khan",  day: "19 de ago", time: "C.C 11:00", location: "C.C", notes: "", slots: 1, signups: [], createdAt: Date.now(), owner: "Rafci" },
+                { id: crypto.randomUUID(), type: "student", creatorName: "Paul",  area: "Khan",  day: "19 de ago", time: "C.C",        location: "C.C", notes: "", slots: 1, signups: [], createdAt: Date.now(), owner: "Paul" },
+                { id: crypto.randomUUID(), type: "student", creatorName: "Anika", area: "Vocab", day: "21 de ago", time: "C.C",        location: "C.C", notes: "", slots: 1, signups: [], createdAt: Date.now(), owner: "Anika" },
+                { id: crypto.randomUUID(), type: "guide",   creatorName: "Guide Team", area: "Library sorting", day: "Fri", time: "10:30–11:30", location: "Library", notes: "Need 2 volunteers", slots: 2, signups: [], createdAt: Date.now(), owner: "Guide Team" },
               ];
             });
             const [showForm, setShowForm] = useState(false);
@@ -164,14 +183,18 @@ def home():
             },[posts, query, typeFilter]);
 
             function addOrUpdate(post){
+              // ensure owner is present
+              const withOwner = { owner: currentUser || (post.owner||post.creatorName), ...post };
               setPosts(prev=>{
-                const idx = prev.findIndex(x=>x.id===post.id);
-                if(idx===-1) return [post, ...prev];
-                const next=[...prev]; next[idx]=post; return next;
+                const idx = prev.findIndex(x=>x.id===withOwner.id);
+                if(idx===-1) return [withOwner, ...prev];
+                const next=[...prev]; next[idx]=withOwner; return next;
               });
               setShowForm(false); setFormDefaults(null);
             }
-            function remove(id){ setPosts(prev=>prev.filter(p=>p.id!==id)); }
+            function remove(id){
+              setPosts(prev=>prev.filter(p=>p.id!==id));
+            }
             function signUp(post, name){
               if(!name) return;
               const already = post.signups.some(s=>s.toLowerCase()===name.toLowerCase());
@@ -180,8 +203,8 @@ def home():
               addOrUpdate({ ...post, signups:[...post.signups, name] });
             }
             function exportCSV(){
-              const header=["Type","Creator","Area","Day","Time","Location","Slots","Signups","Notes"];
-              const rows = posts.map(p=>[p.type,p.creatorName,p.area,p.day,p.time,p.location||"",p.slots||1,p.signups.join("; "), (p.notes||"").replaceAll(",", ";")]);
+              const header=["Type","Creator","Area","Day","Time","Location","Slots","Signups","Notes","Owner"];
+              const rows = posts.map(p=>[p.type,p.creatorName,p.area,p.day,p.time,p.location||"",p.slots||1,p.signups.join("; "), (p.notes||"").replaceAll(",", ";"), p.owner||""]);
               const csv=[header,...rows].map(r=>r.join(",")).join("\\n");
               const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob);
               const a=document.createElement("a"); a.href=url; a.download="community_service_board.csv"; a.click(); URL.revokeObjectURL(url);
@@ -217,11 +240,14 @@ def home():
                     <tbody className="text-[16px]">
                       {filtered.length===0 && (<tr><td colSpan={8} className="py-10 text-center text-slate-400">No posts yet. Click “New Post”.</td></tr>)}
                       {filtered.map(p => (
-                        <Row key={p.id} post={p}
+                        <Row
+                          key={p.id}
+                          post={p}
+                          currentUser={currentUser}
+                          guideMode={guideMode}
                           onEdit={()=>{ setFormDefaults(p); setShowForm(true); }}
                           onDelete={()=>remove(p.id)}
                           onSignUp={name=>signUp(p,name)}
-                          guideMode={outerGuideMode}
                         />
                       ))}
                     </tbody>
@@ -233,7 +259,8 @@ def home():
                     defaults={formDefaults}
                     onClose={()=>{ setShowForm(false); setFormDefaults(null); }}
                     onSave={post=>addOrUpdate(post)}
-                    guideMode={outerGuideMode}
+                    guideMode={guideMode}
+                    currentUser={currentUser}
                   />
                 )}
               </div>
@@ -242,8 +269,9 @@ def home():
 
           function Th({ children }) { return <th className="px-3 py-3 font-semibold uppercase tracking-wide">{children}</th>; }
 
-          function Row({ post, onEdit, onDelete, onSignUp, guideMode }) {
+          function Row({ post, currentUser, guideMode, onEdit, onDelete, onSignUp }) {
             const full = (post.signups?.length || 0) >= (post.slots || 1);
+            const canDelete = guideMode || (currentUser && post.owner && currentUser.trim().toLowerCase() === post.owner.trim().toLowerCase());
             return (
               <tr className="border-t">
                 <td className="px-3 py-3 align-top">
@@ -267,10 +295,11 @@ def home():
                   <div className="flex flex-wrap gap-2">
                     <SignUpButton disabled={full} onSignUp={onSignUp} />
                     <button onClick={onEdit} className="px-2.5 py-1.5 rounded-lg border text-xs hover:bg-slate-50">Edit</button>
-                    {(guideMode || post.type==="student") && (
+                    {canDelete && (
                       <button onClick={onDelete} className="px-2.5 py-1.5 rounded-lg border text-xs hover:bg-rose-50 text-rose-600">Delete</button>
                     )}
                   </div>
+                  {post.owner && <div className="text-[11px] text-slate-400 mt-1">Owner: {post.owner}</div>}
                   {post.notes && <div className="text-xs text-slate-500 mt-1">{post.notes}</div>}
                 </td>
               </tr>
@@ -299,15 +328,16 @@ def home():
             );
           }
 
-          function PostForm({ defaults, onSave, onClose, guideMode }) {
+          function PostForm({ defaults, onSave, onClose, guideMode, currentUser }) {
             const [type, setType] = useState(defaults?.type || (guideMode ? "guide" : "student"));
-            const [creatorName, setCreatorName] = useState(defaults?.creatorName || "");
+            const [creatorName, setCreatorName] = useState(defaults?.creatorName || (currentUser || ""));
             const [area, setArea] = useState(defaults?.area || "");
             const [day, setDay] = useState(defaults?.day || "");
             const [time, setTime] = useState(defaults?.time || "");
             const [location, setLocation] = useState(defaults?.location || "");
             const [slots, setSlots] = useState(defaults?.slots || 1);
             const [notes, setNotes] = useState(defaults?.notes || "");
+
             return (
               <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4">
                 <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-5">
@@ -358,12 +388,17 @@ def home():
                       if(!creatorName || !area){ alert("Please fill at least Creator and Area."); return; }
                       const post = {
                         id: (typeof defaults?.id!=="undefined" ? defaults.id : crypto.randomUUID()),
-                        type, creatorName: creatorName.trim(), area: area.trim(),
-                        day: day.trim(), time: time.trim(), location: location.trim(),
+                        type,
+                        creatorName: creatorName.trim(),
+                        area: area.trim(),
+                        day: day.trim(),
+                        time: time.trim(),
+                        location: location.trim(),
                         slots: Math.max(1, slots||1),
                         signups: defaults?.signups || [],
                         notes: notes.trim(),
                         createdAt: defaults?.createdAt || Date.now(),
+                        owner: (defaults?.owner) || (currentUser || creatorName || "unknown"),
                       };
                       onSave(post);
                     }} className="px-3 py-2 rounded-xl bg-slate-900 text-white">Save</button>
@@ -373,8 +408,8 @@ def home():
             );
           }
 
-          // -------- Announcements (anyone can post) --------
-          function AnnouncementsBoard() {
+          // -------- Announcements (anyone can post; only owner or guide can delete/edit) --------
+          function AnnouncementsBoard({ currentUser, guideMode }) {
             const [items, setItems] = useState(()=>{
               const saved = localStorage.getItem("acton_announcements");
               return saved ? JSON.parse(saved) : [];
@@ -385,10 +420,11 @@ def home():
             useEffect(()=>{ localStorage.setItem("acton_announcements", JSON.stringify(items)); },[items]);
 
             function save(it){
+              const withOwner = { owner: (def?.owner) || (currentUser || "unknown"), ...it };
               setItems(prev=>{
-                const idx = prev.findIndex(x=>x.id===it.id);
-                if(idx===-1) return [it, ...prev];
-                const next=[...prev]; next[idx]=it; return next;
+                const idx = prev.findIndex(x=>x.id===withOwner.id);
+                if(idx===-1) return [withOwner, ...prev];
+                const next=[...prev]; next[idx]=withOwner; return next;
               });
               setShow(false); setDef(null);
             }
@@ -398,28 +434,32 @@ def home():
               <div className="-mt-2">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-extrabold text-slate-800">Announcements</h2>
-                  <button onClick={()=>setShow(true)} className="px-4 py-2 rounded-2xl bg-fuchsia-600 text-white shadow hover:bg-fuchsia-700">+ New Announcement</button>
+                  <button onClick={()=>{ setDef(null); setShow(true); }} className="px-4 py-2 rounded-2xl bg-fuchsia-600 text-white shadow hover:bg-fuchsia-700">+ New Announcement</button>
                 </div>
 
                 {items.length===0 ? (
                   <div className="text-slate-400 text-center py-10">No announcements yet.</div>
                 ) : (
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {items.map(it=>(
-                      <div key={it.id} className="bg-white rounded-2xl shadow ring-1 ring-slate-200 overflow-hidden">
-                        {it.image && <img src={it.image} className="w-full h-44 object-cover" alt="" />}
-                        <div className="p-4">
-                          <div className="text-xs text-slate-400 mb-1">{new Date(it.createdAt).toLocaleString()}</div>
-                          <div className="font-bold text-lg">{it.title}</div>
-                          {it.subtitle && <div className="text-slate-600 mt-0.5">{it.subtitle}</div>}
-                          {it.body && <p className="mt-2 text-slate-700">{it.body}</p>}
-                          <div className="flex gap-2 mt-3">
-                            <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=>{ setDef(it); setShow(true); }}>Edit</button>
-                            <button className="px-2 py-1 rounded-lg border text-xs text-rose-600 hover:bg-rose-50" onClick={()=>remove(it.id)}>Delete</button>
+                    {items.map(it=>{
+                      const canEdit = guideMode || (currentUser && it.owner && currentUser.trim().toLowerCase()===it.owner.trim().toLowerCase());
+                      return (
+                        <div key={it.id} className="bg-white rounded-2xl shadow ring-1 ring-slate-200 overflow-hidden">
+                          {it.image && <img src={it.image} className="w-full h-44 object-cover" alt="" />}
+                          <div className="p-4">
+                            <div className="text-xs text-slate-400 mb-1">{new Date(it.createdAt).toLocaleString()}</div>
+                            <div className="font-bold text-lg">{it.title}</div>
+                            {it.subtitle && <div className="text-slate-600 mt-0.5">{it.subtitle}</div>}
+                            {it.body && <p className="mt-2 text-slate-700">{it.body}</p>}
+                            <div className="text-[11px] text-slate-400 mt-2">Owner: {it.owner || "unknown"}</div>
+                            <div className="flex gap-2 mt-3">
+                              {canEdit && <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=>{ setDef(it); setShow(true); }}>Edit</button>}
+                              {canEdit && <button className="px-2 py-1 rounded-lg border text-xs text-rose-600 hover:bg-rose-50" onClick={()=>remove(it.id)}>Delete</button>}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
@@ -467,7 +507,15 @@ def home():
                     <button className="px-3 py-2 rounded-xl border" onClick={onClose}>Cancel</button>
                     <button className="px-3 py-2 rounded-xl bg-fuchsia-600 text-white" onClick={()=>{
                       if(!title.trim()){ alert("Please add a title."); return; }
-                      onSave({ id: defaults?.id || crypto.randomUUID(), title: title.trim(), subtitle: subtitle.trim(), body: body.trim(), image: image || "", createdAt: defaults?.createdAt || Date.now() });
+                      onSave({
+                        id: defaults?.id || crypto.randomUUID(),
+                        title: title.trim(),
+                        subtitle: subtitle.trim(),
+                        body: body.trim(),
+                        image: image || "",
+                        createdAt: defaults?.createdAt || Date.now(),
+                        owner: defaults?.owner // set in save()
+                      });
                     }}>Save</button>
                   </div>
                 </div>
@@ -484,32 +532,6 @@ def home():
     """
     return Response(html, mimetype="text/html")
 
-@app.route("/add_announcement", methods=["POST"])
-def add_announcement():
-    data = request.json
-    announcement = {
-        "id": str(uuid.uuid4()),  # unique ID
-        "text": data["text"],
-        "created_by": data["user"],  # 👈 store who made it
-    }
-    announcements.append(announcement)
-    return jsonify({"success": True, "announcement": announcement})
-
-@app.route("/delete_announcement/<id>", methods=["DELETE"])
-def delete_announcement(id):
-    user = request.args.get("user")  # 👈 current user
-    for a in announcements:
-        if a["id"] == id:
-            if a["created_by"] == user:  # ✅ only owner can delete
-                announcements.remove(a)
-                return jsonify({"success": True})
-            else:
-                return jsonify({"error": "Not allowed"}), 403
-    return jsonify({"error": "Not found"}), 404
-
-fetch(`/delete_announcement/${id}?user=${currentUser}`, { method: "DELETE" })
-
-
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 8000))  # Railway uses 8000
     app.run(host="0.0.0.0", port=port, debug=True)
