@@ -32,37 +32,19 @@ def home():
         <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
         <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
         <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-        <!-- tiny runtime error helper -->
-        <script>
-          window.addEventListener('error', (e) => {
-            const box = document.getElementById('root');
-            if (box && !box.dataset.ok) box.innerHTML =
-              '<div style="padding:16px;color:#b91c1c;background:#fee2e2;border-radius:12px;max-width:800px;margin:24px auto;font-family:system-ui">'+
-              '<b>Script error:</b> ' + (e.message||'Unknown') + '</div>';
-          });
-          window.addEventListener('unhandledrejection', (e) => {
-            const box = document.getElementById('root');
-            if (box && !box.dataset.ok) box.innerHTML =
-              '<div style="padding:16px;color:#b91c1c;background:#fee2e2;border-radius:12px;max-width:800px;margin:24px auto;font-family:system-ui">'+
-              '<b>Promise error:</b> ' + (e.reason && e.reason.message ? e.reason.message : e.reason) + '</div>';
-          });
-        </script>
       </head>
       <body class="bg-slate-50 font-display text-[17px] sm:text-[18px]">
         <div id="root">Loading…</div>
 
-        <!-- Use React preset so JSX compiles -->
+        <!-- JSX compiler -->
         <script type="text/babel" data-presets="react">
           const { useState, useEffect, useMemo } = React;
-          const GUIDE_PIN = "guide123";
 
           function App() {
-            // --- current user (who am I?) ---
+            // current user (who am I?)
             const [user, setUser] = useState(() => localStorage.getItem("acton_user") || "");
             useEffect(() => { localStorage.setItem("acton_user", user); }, [user]);
 
-            const [guideMode, setGuideMode] = useState(false);
             const [activeTab, setActiveTab] = useState("board"); // 'board' | 'ann'
 
             return (
@@ -72,14 +54,12 @@ def home():
                   <TopBar
                     user={user}
                     setUser={setUser}
-                    guideMode={guideMode}
-                    setGuideMode={setGuideMode}
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                   />
                   {activeTab === "board"
-                    ? <CommunityServiceBoard currentUser={user} guideMode={guideMode} />
-                    : <AnnouncementsBoard currentUser={user} guideMode={guideMode} />}
+                    ? <CommunityServiceBoard currentUser={user} />
+                    : <AnnouncementsBoard currentUser={user} />}
                   <Footer />
                 </div>
               </div>
@@ -97,10 +77,7 @@ def home():
             );
           }
 
-          function TopBar({ user, setUser, guideMode, setGuideMode, activeTab, setActiveTab }) {
-            const [asking, setAsking] = useState(false);
-            const [pin, setPin] = useState("");
-
+          function TopBar({ user, setUser, activeTab, setActiveTab }) {
             return (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 -mt-8 sm:-mt-10 mb-6">
                 <div className="bg-white shadow-lg rounded-2xl p-1 inline-flex">
@@ -108,38 +85,15 @@ def home():
                   <TabButton active={activeTab === "ann"} onClick={() => setActiveTab("ann")}>Announcements</TabButton>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="bg-white border rounded-2xl shadow px-3 py-2 flex items-center gap-2">
-                    <span className="text-slate-500 text-sm">I am</span>
-                    <input
-                      value={user}
-                      onChange={(e)=>setUser(e.target.value)}
-                      placeholder="your name"
-                      className="px-2 py-1 border rounded-xl text-sm"
-                      style={{minWidth:"10rem"}}
-                    />
-                  </div>
-
-                  <div className="relative inline-block">
-                    <button
-                      onClick={() => (guideMode ? setGuideMode(false) : setAsking(true))}
-                      className={"px-4 py-2 rounded-2xl shadow-lg text-base " + (guideMode ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-white hover:bg-slate-50 border")}
-                    >
-                      {guideMode ? "Guide Mode: ON" : "Guide Mode"}
-                    </button>
-                    {asking && (
-                      <div className="absolute right-0 mt-2 w-72 bg-white border rounded-2xl shadow-xl p-4">
-                        <div className="font-semibold">Enter Guide PIN</div>
-                        <input value={pin} onChange={(e)=>setPin(e.target.value)} placeholder="e.g., guide123" className="w-full mt-2 px-3 py-2 border rounded-xl" />
-                        <div className="flex justify-end gap-2 mt-3">
-                          <button className="px-3 py-2 rounded-xl border" onClick={()=>setAsking(false)}>Cancel</button>
-                          <button className="px-3 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>{
-                            if(pin.trim()===GUIDE_PIN){ setGuideMode(true); setAsking(false); setPin(""); } else alert("Incorrect PIN");
-                          }}>Unlock</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                <div className="bg-white border rounded-2xl shadow px-3 py-2 flex items-center gap-2">
+                  <span className="text-slate-500 text-sm">I am</span>
+                  <input
+                    value={user}
+                    onChange={(e)=>setUser(e.target.value)}
+                    placeholder="your name"
+                    className="px-3 py-2 border rounded-xl text-sm"
+                    style={{minWidth:"12rem"}}
+                  />
                 </div>
               </div>
             );
@@ -147,7 +101,11 @@ def home():
 
           function TabButton({ active, children, onClick }) {
             return (
-              <button onClick={onClick} className={"px-4 sm:px-6 py-2 rounded-xl text-base font-semibold transition " + (active ? "bg-slate-900 text-white shadow" : "text-slate-600 hover:bg-slate-100")}>
+              <button
+                onClick={onClick}
+                className={"px-4 sm:px-6 py-2 rounded-xl text-base font-semibold transition " +
+                  (active ? "bg-slate-900 text-white shadow" : "text-slate-600 hover:bg-slate-100")}
+              >
                 {children}
               </button>
             );
@@ -156,7 +114,7 @@ def home():
           function Footer() { return <div className="py-10 text-center text-sm text-slate-400">Made with ❤️ for Acton.</div>; }
 
           // -------- Community Service Board --------
-          function CommunityServiceBoard({ currentUser, guideMode }) {
+          function CommunityServiceBoard({ currentUser }) {
             const [posts, setPosts] = useState(() => {
               const saved = localStorage.getItem("acton_cs_posts");
               if (saved) return JSON.parse(saved);
@@ -171,6 +129,7 @@ def home():
             const [formDefaults, setFormDefaults] = useState(null);
             const [query, setQuery] = useState("");
             const [typeFilter, setTypeFilter] = useState("all");
+            const [signTarget, setSignTarget] = useState(null); // opens big centered modal
 
             useEffect(()=>{ localStorage.setItem("acton_cs_posts", JSON.stringify(posts)); },[posts]);
 
@@ -183,8 +142,7 @@ def home():
             },[posts, query, typeFilter]);
 
             function addOrUpdate(post){
-              // ensure owner is present
-              const withOwner = { owner: currentUser || (post.owner||post.creatorName), ...post };
+              const withOwner = { owner: post.owner || currentUser || post.creatorName || "unknown", ...post };
               setPosts(prev=>{
                 const idx = prev.findIndex(x=>x.id===withOwner.id);
                 if(idx===-1) return [withOwner, ...prev];
@@ -224,8 +182,8 @@ def home():
                     />
                     <select value={typeFilter} onChange={(e)=>setTypeFilter(e.target.value)} className="px-3 py-2 rounded-xl border shadow-sm">
                       <option value="all">All posts</option>
-                      <option value="student">Students only</option>
-                      <option value="guide">Extra jobs only</option>
+                      <option value="student">Community cervice</option>
+                      <option value="guide">Extra jobs</option>
                     </select>
                   </div>
                 </div>
@@ -244,10 +202,9 @@ def home():
                           key={p.id}
                           post={p}
                           currentUser={currentUser}
-                          guideMode={guideMode}
                           onEdit={()=>{ setFormDefaults(p); setShowForm(true); }}
                           onDelete={()=>remove(p.id)}
-                          onSignUp={name=>signUp(p,name)}
+                          onOpenSignUp={()=>setSignTarget(p)}
                         />
                       ))}
                     </tbody>
@@ -259,8 +216,15 @@ def home():
                     defaults={formDefaults}
                     onClose={()=>{ setShowForm(false); setFormDefaults(null); }}
                     onSave={post=>addOrUpdate(post)}
-                    guideMode={guideMode}
                     currentUser={currentUser}
+                  />
+                )}
+
+                {signTarget && (
+                  <SignUpModal
+                    onClose={()=>setSignTarget(null)}
+                    onConfirm={(name)=>{ signUp(signTarget, name); setSignTarget(null); }}
+                    full={(signTarget.signups?.length||0) >= (signTarget.slots||1)}
                   />
                 )}
               </div>
@@ -269,14 +233,17 @@ def home():
 
           function Th({ children }) { return <th className="px-3 py-3 font-semibold uppercase tracking-wide">{children}</th>; }
 
-          function Row({ post, currentUser, guideMode, onEdit, onDelete, onSignUp }) {
+          function Row({ post, currentUser, onEdit, onDelete, onOpenSignUp }) {
             const full = (post.signups?.length || 0) >= (post.slots || 1);
-            const canDelete = guideMode || (currentUser && post.owner && currentUser.trim().toLowerCase() === post.owner.trim().toLowerCase());
+            const canDelete =
+              currentUser &&
+              post.owner &&
+              currentUser.trim().toLowerCase() === post.owner.trim().toLowerCase();
             return (
               <tr className="border-t">
                 <td className="px-3 py-3 align-top">
                   <span className={"inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold " + (post.type==="guide" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800")}>
-                    {post.type==="guide" ? "Extra job" : "Student post"}
+                    {post.type==="guide" ? "Extra job" : "Community cervice"}
                   </span>
                 </td>
                 <td className="px-3 py-3 align-top font-semibold text-slate-800">{post.creatorName}</td>
@@ -293,7 +260,13 @@ def home():
                 </td>
                 <td className="px-3 py-3 align-top">
                   <div className="flex flex-wrap gap-2">
-                    <SignUpButton disabled={full} onSignUp={onSignUp} />
+                    <button
+                      disabled={full}
+                      onClick={onOpenSignUp}
+                      className={"px-2.5 py-1.5 rounded-lg text-xs shadow " + (full ? "bg-slate-200 text-slate-500" : "bg-slate-900 text-white hover:shadow-md")}
+                    >
+                      {full ? "Full" : "Sign up"}
+                    </button>
                     <button onClick={onEdit} className="px-2.5 py-1.5 rounded-lg border text-xs hover:bg-slate-50">Edit</button>
                     {canDelete && (
                       <button onClick={onDelete} className="px-2.5 py-1.5 rounded-lg border text-xs hover:bg-rose-50 text-rose-600">Delete</button>
@@ -306,30 +279,38 @@ def home():
             );
           }
 
-          function SignUpButton({ onSignUp, disabled }) {
-            const [open, setOpen] = useState(false);
+          // Big centered sign-up modal
+          function SignUpModal({ onClose, onConfirm, full }) {
             const [name, setName] = useState("");
             return (
-              <div className="relative inline-block">
-                <button disabled={disabled} onClick={()=>setOpen(v=>!v)} className={"px-2.5 py-1.5 rounded-lg text-xs shadow " + (disabled ? "bg-slate-200 text-slate-500" : "bg-slate-900 text-white hover:shadow-md")}>
-                  {disabled ? "Full" : "Sign up"}
-                </button>
-                {open && !disabled && (
-                  <div className="absolute z-10 mt-2 w-60 p-3 bg-white border rounded-xl shadow">
-                    <label className="block text-xs text-slate-500 mb-1">Your name</label>
-                    <input value={name} onChange={(e)=>setName(e.target.value)} placeholder="e.g., Ana" className="w-full px-2 py-1.5 border rounded-lg mb-2" />
-                    <div className="flex justify-end gap-2">
-                      <button className="text-xs px-2 py-1.5 rounded-lg border" onClick={()=>setOpen(false)}>Cancel</button>
-                      <button className="text-xs px-2 py-1.5 rounded-lg bg-emerald-600 text-white" onClick={()=>{ onSignUp(name.trim()); setName(""); setOpen(false); }}>Confirm</button>
-                    </div>
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6">
+                  <h3 className="text-2xl font-extrabold mb-1">Sign up</h3>
+                  <p className="text-slate-500 mb-4">Enter your name to reserve a spot.</p>
+                  <input
+                    value={name}
+                    onChange={(e)=>setName(e.target.value)}
+                    placeholder="Your name"
+                    className="w-full px-4 py-3 border rounded-2xl text-lg"
+                    disabled={full}
+                  />
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button className="px-4 py-2 rounded-2xl border" onClick={onClose}>Cancel</button>
+                    <button
+                      className={"px-5 py-2 rounded-2xl text-white " + (full ? "bg-slate-300" : "bg-emerald-600 hover:bg-emerald-700")}
+                      onClick={()=>{ if(!full) onConfirm(name.trim()); }}
+                      disabled={full}
+                    >
+                      {full ? "Slots Full" : "Confirm"}
+                    </button>
                   </div>
-                )}
+                </div>
               </div>
             );
           }
 
-          function PostForm({ defaults, onSave, onClose, guideMode, currentUser }) {
-            const [type, setType] = useState(defaults?.type || (guideMode ? "guide" : "student"));
+          function PostForm({ defaults, onSave, onClose, currentUser }) {
+            const [type, setType] = useState(defaults?.type || "student");  // student (Community cervice) or guide (Extra job)
             const [creatorName, setCreatorName] = useState(defaults?.creatorName || (currentUser || ""));
             const [area, setArea] = useState(defaults?.area || "");
             const [day, setDay] = useState(defaults?.day || "");
@@ -349,13 +330,13 @@ def home():
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Post type</label>
                       <select value={type} onChange={(e)=>setType(e.target.value)} className="w-full px-3 py-2 border rounded-xl">
-                        <option value="student">Student post</option>
-                        <option value="guide">Extra job (guide)</option>
+                        <option value="student">Community cervice</option>
+                        <option value="guide">Extra job</option>
                       </select>
                     </div>
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Eagle / Creator name</label>
-                      <input value={creatorName} onChange={(e)=>setCreatorName(e.target.value)} placeholder={type==="guide" ? "e.g., Ms. Sofia" : "e.g., Ana"} className="w-full px-3 py-2 border rounded-xl" />
+                      <input value={creatorName} onChange={(e)=>setCreatorName(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Area of help</label>
@@ -408,8 +389,8 @@ def home():
             );
           }
 
-          // -------- Announcements (anyone can post; only owner or guide can delete/edit) --------
-          function AnnouncementsBoard({ currentUser, guideMode }) {
+          // -------- Announcements (Instagram-style cards) --------
+          function AnnouncementsBoard({ currentUser }) {
             const [items, setItems] = useState(()=>{
               const saved = localStorage.getItem("acton_announcements");
               return saved ? JSON.parse(saved) : [];
@@ -440,22 +421,29 @@ def home():
                 {items.length===0 ? (
                   <div className="text-slate-400 text-center py-10">No announcements yet.</div>
                 ) : (
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {items.map(it=>{
-                      const canEdit = guideMode || (currentUser && it.owner && currentUser.trim().toLowerCase()===it.owner.trim().toLowerCase());
+                      const canEdit =
+                        currentUser &&
+                        it.owner &&
+                        currentUser.trim().toLowerCase() === it.owner.trim().toLowerCase();
                       return (
-                        <div key={it.id} className="bg-white rounded-2xl shadow ring-1 ring-slate-200 overflow-hidden">
-                          {it.image && <img src={it.image} className="w-full h-44 object-cover" alt="" />}
-                          <div className="p-4">
-                            <div className="text-xs text-slate-400 mb-1">{new Date(it.createdAt).toLocaleString()}</div>
-                            <div className="font-bold text-lg">{it.title}</div>
-                            {it.subtitle && <div className="text-slate-600 mt-0.5">{it.subtitle}</div>}
-                            {it.body && <p className="mt-2 text-slate-700">{it.body}</p>}
-                            <div className="text-[11px] text-slate-400 mt-2">Owner: {it.owner || "unknown"}</div>
-                            <div className="flex gap-2 mt-3">
-                              {canEdit && <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=>{ setDef(it); setShow(true); }}>Edit</button>}
-                              {canEdit && <button className="px-2 py-1 rounded-lg border text-xs text-rose-600 hover:bg-rose-50" onClick={()=>remove(it.id)}>Delete</button>}
-                            </div>
+                        <div key={it.id} className="bg-white rounded-3xl shadow ring-1 ring-slate-200 overflow-hidden">
+                          {it.image
+                            ? <img src={it.image} className="w-full aspect-[4/3] object-cover" alt="" />
+                            : <div className="w-full aspect-[4/3] bg-gradient-to-br from-slate-100 to-slate-200" />}
+                          <div className="p-6">
+                            <div className="text-xs text-slate-400 mb-2">{new Date(it.createdAt).toLocaleString()}</div>
+                            <div className="font-extrabold text-2xl leading-tight">{it.title}</div>
+                            {it.subtitle && <div className="text-slate-600 mt-1 text-lg">{it.subtitle}</div>}
+                            {it.body && <p className="mt-3 text-slate-700 text-[17px] leading-relaxed">{it.body}</p>}
+                            <div className="text-[12px] text-slate-400 mt-3">Owner: {it.owner || "unknown"}</div>
+                            {canEdit && (
+                              <div className="flex gap-2 mt-4">
+                                <button className="px-3 py-2 rounded-xl border text-sm" onClick={()=>{ setDef(it); setShow(true); }}>Edit</button>
+                                <button className="px-3 py-2 rounded-xl border text-sm text-rose-600 hover:bg-rose-50" onClick={()=>remove(it.id)}>Delete</button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -479,33 +467,33 @@ def home():
             }
             return (
               <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
-                <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-5">
+                <div className="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-6">
                   <div className="flex items-start justify-between">
-                    <h3 className="text-xl font-bold">{defaults ? "Edit Announcement" : "New Announcement"}</h3>
-                    <button className="px-2 py-1 rounded-lg border text-xs" onClick={onClose}>Close</button>
+                    <h3 className="text-2xl font-extrabold">{defaults ? "Edit Announcement" : "New Announcement"}</h3>
+                    <button className="px-3 py-2 rounded-xl border text-sm" onClick={onClose}>Close</button>
                   </div>
-                  <div className="grid sm:grid-cols-2 gap-3 mt-3">
+                  <div className="grid sm:grid-cols-2 gap-4 mt-4">
                     <div className="sm:col-span-2">
                       <label className="block text-xs text-slate-500 mb-1">Title</label>
-                      <input value={title} onChange={(e)=>setTitle(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
+                      <input value={title} onChange={(e)=>setTitle(e.target.value)} className="w-full px-4 py-3 border rounded-2xl text-lg" />
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-xs text-slate-500 mb-1">Subtitle (optional)</label>
-                      <input value={subtitle} onChange={(e)=>setSubtitle(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
+                      <input value={subtitle} onChange={(e)=>setSubtitle(e.target.value)} className="w-full px-4 py-3 border rounded-2xl" />
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-xs text-slate-500 mb-1">Body</label>
-                      <textarea rows={4} value={body} onChange={(e)=>setBody(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
+                      <textarea rows={5} value={body} onChange={(e)=>setBody(e.target.value)} className="w-full px-4 py-3 border rounded-2xl" />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Photo (optional)</label>
                       <input type="file" accept="image/*" onChange={handleFile} className="w-full" />
                     </div>
-                    {image && (<div><div className="text-xs text-slate-500 mb-1">Preview</div><img src={image} className="w-full h-40 object-cover rounded-xl border" /></div>)}
+                    {image && (<div><div className="text-xs text-slate-500 mb-1">Preview</div><img src={image} className="w-full aspect-[4/3] object-cover rounded-2xl border" /></div>)}
                   </div>
-                  <div className="flex justify-end gap-2 mt-4">
-                    <button className="px-3 py-2 rounded-xl border" onClick={onClose}>Cancel</button>
-                    <button className="px-3 py-2 rounded-xl bg-fuchsia-600 text-white" onClick={()=>{
+                  <div className="flex justify-end gap-2 mt-5">
+                    <button className="px-4 py-2 rounded-2xl border" onClick={onClose}>Cancel</button>
+                    <button className="px-4 py-2 rounded-2xl bg-fuchsia-600 text-white" onClick={()=>{
                       if(!title.trim()){ alert("Please add a title."); return; }
                       onSave({
                         id: defaults?.id || crypto.randomUUID(),
