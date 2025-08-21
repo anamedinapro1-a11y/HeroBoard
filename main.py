@@ -484,6 +484,32 @@ def home():
     """
     return Response(html, mimetype="text/html")
 
+@app.route("/add_announcement", methods=["POST"])
+def add_announcement():
+    data = request.json
+    announcement = {
+        "id": str(uuid.uuid4()),  # unique ID
+        "text": data["text"],
+        "created_by": data["user"],  # 👈 store who made it
+    }
+    announcements.append(announcement)
+    return jsonify({"success": True, "announcement": announcement})
+
+@app.route("/delete_announcement/<id>", methods=["DELETE"])
+def delete_announcement(id):
+    user = request.args.get("user")  # 👈 current user
+    for a in announcements:
+        if a["id"] == id:
+            if a["created_by"] == user:  # ✅ only owner can delete
+                announcements.remove(a)
+                return jsonify({"success": True})
+            else:
+                return jsonify({"error": "Not allowed"}), 403
+    return jsonify({"error": "Not found"}), 404
+
+fetch(`/delete_announcement/${id}?user=${currentUser}`, { method: "DELETE" })
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=True)
