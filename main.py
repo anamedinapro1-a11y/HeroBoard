@@ -18,22 +18,18 @@ def home():
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
 
-        <!-- Tailwind -->
+        <!-- Tailwind CDN (with config BEFORE the script) -->
         <script>
-          tailwind = {
-            theme: {
-              extend: {
-                fontFamily: { display: ['Poppins','ui-sans-serif','system-ui'] }
-              }
-            }
+          tailwind = {};            /* avoid reference errors */
+          tailwind.config = {
+            theme: { extend: { fontFamily: { display: ['Poppins','ui-sans-serif','system-ui'] } } }
           }
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
 
-        <!-- React + ReactDOM -->
+        <!-- React + ReactDOM + Babel -->
         <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
         <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-        <!-- Babel -->
         <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
       </head>
       <body class="bg-slate-50 font-display text-[17px] sm:text-[18px]">
@@ -41,19 +37,14 @@ def home():
 
         <script type="text/babel">
           const { useState, useEffect, useMemo } = React;
-
-          // ---------------- GLOBALS ----------------
           const GUIDE_PIN = "guide123";
 
-          // ---------------- APP ----------------
           function App() {
             const [guideMode, setGuideMode] = useState(false);
             const [activeTab, setActiveTab] = useState("board"); // 'board' | 'ann'
-
             return (
               <div className="min-h-screen">
                 <HeroHeader />
-
                 <div className="max-w-6xl mx-auto px-4 sm:px-6">
                   <TopBar
                     guideMode={guideMode}
@@ -61,13 +52,9 @@ def home():
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                   />
-
-                  {activeTab === "board" ? (
-                    <CommunityServiceBoard outerGuideMode={guideMode} />
-                  ) : (
-                    <AnnouncementsBoard guideMode={guideMode} />
-                  )}
-
+                  {activeTab === "board"
+                    ? <CommunityServiceBoard outerGuideMode={guideMode} />
+                    : <AnnouncementsBoard guideMode={guideMode} />}
                   <Footer />
                 </div>
               </div>
@@ -79,9 +66,7 @@ def home():
               <div className="bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-rose-500 text-white">
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
                   <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight">HeroBoard</h1>
-                  <p className="mt-2 text-white/90 text-lg">
-                    Community Service Board & Announcements — clean, colorful, and easy to use.
-                  </p>
+                  <p className="mt-2 text-white/90 text-lg">Community Service Board & Announcements.</p>
                 </div>
               </div>
             );
@@ -90,49 +75,29 @@ def home():
           function TopBar({ guideMode, setGuideMode, activeTab, setActiveTab }) {
             const [asking, setAsking] = useState(false);
             const [pin, setPin] = useState("");
-
             return (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 -mt-8 sm:-mt-10 mb-6">
-                {/* Tabs */}
                 <div className="bg-white shadow-lg rounded-2xl p-1 inline-flex">
-                  <TabButton active={activeTab === "board"} onClick={() => setActiveTab("board")}>
-                    Community Service
-                  </TabButton>
-                  <TabButton active={activeTab === "ann"} onClick={() => setActiveTab("ann")}>
-                    Announcements
-                  </TabButton>
+                  <TabButton active={activeTab === "board"} onClick={() => setActiveTab("board")}>Community Service</TabButton>
+                  <TabButton active={activeTab === "ann"} onClick={() => setActiveTab("ann")}>Announcements</TabButton>
                 </div>
 
-                {/* Guide mode */}
                 <div className="relative inline-block">
                   <button
-                    onClick={() => (guideMode ? setGuideMode(false) : setAsking(true)))
-                    className={"px-4 py-2 rounded-2xl shadow-lg text-base " +
-                      (guideMode ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-white hover:bg-slate-50 border")}
+                    onClick={() => (guideMode ? setGuideMode(false) : setAsking(true))}  {/* FIXED: removed extra ) */}
+                    className={"px-4 py-2 rounded-2xl shadow-lg text-base " + (guideMode ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-white hover:bg-slate-50 border")}
                   >
                     {guideMode ? "Guide Mode: ON" : "Guide Mode"}
                   </button>
-
                   {asking && (
                     <div className="absolute right-0 mt-2 w-72 bg-white border rounded-2xl shadow-xl p-4">
                       <div className="font-semibold">Enter Guide PIN</div>
-                      <input
-                        value={pin}
-                        onChange={(e)=>setPin(e.target.value)}
-                        placeholder="e.g., guide123"
-                        className="w-full mt-2 px-3 py-2 border rounded-xl"
-                      />
+                      <input value={pin} onChange={(e)=>setPin(e.target.value)} placeholder="e.g., guide123" className="w-full mt-2 px-3 py-2 border rounded-xl" />
                       <div className="flex justify-end gap-2 mt-3">
                         <button className="px-3 py-2 rounded-xl border" onClick={()=>setAsking(false)}>Cancel</button>
-                        <button
-                          className="px-3 py-2 rounded-xl bg-slate-900 text-white"
-                          onClick={()=>{
-                            if(pin.trim()===GUIDE_PIN){ setGuideMode(true); setAsking(false); setPin(""); }
-                            else alert("Incorrect PIN");
-                          }}
-                        >
-                          Unlock
-                        </button>
+                        <button className="px-3 py-2 rounded-xl bg-slate-900 text-white" onClick={()=>{
+                          if(pin.trim()===GUIDE_PIN){ setGuideMode(true); setAsking(false); setPin(""); } else alert("Incorrect PIN");
+                        }}>Unlock</button>
                       </div>
                     </div>
                   )}
@@ -143,24 +108,14 @@ def home():
 
           function TabButton({ active, children, onClick }) {
             return (
-              <button
-                onClick={onClick}
-                className={
-                  "px-4 sm:px-6 py-2 rounded-xl text-base font-semibold transition " +
-                  (active ? "bg-slate-900 text-white shadow" : "text-slate-600 hover:bg-slate-100")
-                }
-              >
+              <button onClick={onClick} className={"px-4 sm:px-6 py-2 rounded-xl text-base font-semibold transition " + (active ? "bg-slate-900 text-white shadow" : "text-slate-600 hover:bg-slate-100")}>
                 {children}
               </button>
             );
           }
 
           function Footer() {
-            return (
-              <div className="py-10 text-center text-sm text-slate-400">
-                Made with ❤️ for Acton. PIN: <code>guide123</code> (change in code).
-              </div>
-            );
+            return <div className="py-10 text-center text-sm text-slate-400">Made with ❤️ for Acton.</div>;
           }
 
           // ---------------- COMMUNITY SERVICE BOARD ----------------
@@ -278,10 +233,7 @@ def home():
             return (
               <tr className="border-t">
                 <td className="px-3 py-3 align-top">
-                  <span className={
-                    "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold " +
-                    (post.type==="guide" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800")
-                  }>
+                  <span className={"inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold " + (post.type==="guide" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800")}>
                     {post.type==="guide" ? "Extra job" : "Student post"}
                   </span>
                 </td>
@@ -292,14 +244,10 @@ def home():
                 <td className="px-3 py-3 align-top">{post.location || "—"}</td>
                 <td className="px-3 py-3 align-top">
                   <div className="flex flex-wrap gap-1">
-                    {(post.signups || []).map((s,i)=>(
-                      <span key={i} className="px-2 py-0.5 rounded-xl bg-slate-100 text-slate-700 text-xs">{s}</span>
-                    ))}
+                    {(post.signups || []).map((s,i)=>(<span key={i} className="px-2 py-0.5 rounded-xl bg-slate-100 text-slate-700 text-xs">{s}</span>))}
                     {post.signups?.length===0 && <span className="text-slate-400 text-sm">No signups yet</span>}
                   </div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    Slots: {post.signups?.length || 0}/{post.slots || 1} {full && <span className="text-rose-500 font-semibold">(Full)</span>}
-                  </div>
+                  <div className="text-xs text-slate-400 mt-1">Slots: {post.signups?.length || 0}/{post.slots || 1} {full && <span className="text-rose-500 font-semibold">(Full)</span>}</div>
                 </td>
                 <td className="px-3 py-3 align-top">
                   <div className="flex flex-wrap gap-2">
@@ -320,11 +268,7 @@ def home():
             const [name, setName] = useState("");
             return (
               <div className="relative inline-block">
-                <button
-                  disabled={disabled}
-                  onClick={()=>setOpen(v=>!v)}
-                  className={"px-2.5 py-1.5 rounded-lg text-xs shadow " + (disabled ? "bg-slate-200 text-slate-500" : "bg-slate-900 text-white hover:shadow-md")}
-                >
+                <button disabled={disabled} onClick={()=>setOpen(v=>!v)} className={"px-2.5 py-1.5 rounded-lg text-xs shadow " + (disabled ? "bg-slate-200 text-slate-500" : "bg-slate-900 text-white hover:shadow-md")}>
                   {disabled ? "Full" : "Sign up"}
                 </button>
                 {open && !disabled && (
@@ -333,9 +277,7 @@ def home():
                     <input value={name} onChange={(e)=>setName(e.target.value)} placeholder="e.g., Ana" className="w-full px-2 py-1.5 border rounded-lg mb-2" />
                     <div className="flex justify-end gap-2">
                       <button className="text-xs px-2 py-1.5 rounded-lg border" onClick={()=>setOpen(false)}>Cancel</button>
-                      <button className="text-xs px-2 py-1.5 rounded-lg bg-emerald-600 text-white" onClick={()=>{
-                        onSignUp(name.trim()); setName(""); setOpen(false);
-                      }}>Confirm</button>
+                      <button className="text-xs px-2 py-1.5 rounded-lg bg-emerald-600 text-white" onClick={()=>{ onSignUp(name.trim()); setName(""); setOpen(false); }}>Confirm</button>
                     </div>
                   </div>
                 )}
@@ -352,7 +294,6 @@ def home():
             const [location, setLocation] = useState(defaults?.location || "");
             const [slots, setSlots] = useState(defaults?.slots || 1);
             const [notes, setNotes] = useState(defaults?.notes || "");
-
             return (
               <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4">
                 <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-5">
@@ -360,7 +301,6 @@ def home():
                     <h2 className="text-xl font-bold">{defaults ? "Edit Post" : "New Post"}</h2>
                     <button onClick={onClose} className="px-2.5 py-1.5 rounded-lg border text-xs">Close</button>
                   </div>
-
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Post type</label>
@@ -369,73 +309,64 @@ def home():
                         <option value="guide">Extra job (guide)</option>
                       </select>
                     </div>
-
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Eagle / Creator name</label>
                       <input value={creatorName} onChange={(e)=>setCreatorName(e.target.value)} placeholder={type==="guide" ? "e.g., Ms. Sofia" : "e.g., Ana"} className="w-full px-3 py-2 border rounded-xl" />
                     </div>
-
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Area of help</label>
                       <input value={area} onChange={(e)=>setArea(e.target.value)} placeholder="e.g., Khan / Vocab / Library / Garden" className="w-full px-3 py-2 border rounded-xl" />
                     </div>
-
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Day</label>
                       <input value={day} onChange={(e)=>setDay(e.target.value)} placeholder="e.g., 21 de ago / Mon" className="w-full px-3 py-2 border rounded-xl" />
                     </div>
-
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Time</label>
                       <input value={time} onChange={(e)=>setTime(e.target.value)} placeholder="e.g., 11:00–11:30" className="w-full px-3 py-2 border rounded-xl" />
                     </div>
-
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Location</label>
                       <input value={location} onChange={(e)=>setLocation(e.target.value)} placeholder="e.g., C.C, Library, Studio" className="w-full px-3 py-2 border rounded-xl" />
                     </div>
-
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Slots (max volunteers)</label>
                       <input type="number" min={1} value={slots} onChange={(e)=>setSlots(parseInt(e.target.value||"1"))} className="w-full px-3 py-2 border rounded-xl" />
                     </div>
-
                     <div className="sm:col-span-2">
                       <label className="block text-xs text-slate-500 mb-1">Notes (optional)</label>
-                      <textarea value={notes} onChange={(e)=>setNotes(e.target.value)} placeholder="Any extra info, materials to bring, etc." rows={3} className="w-full px-3 py-2 border rounded-xl" />
+                      <textarea rows={3} value={notes} onChange={(e)=>setNotes(e.target.value)} placeholder="Any extra info, materials to bring, etc." className="w-full px-3 py-2 border rounded-xl" />
                     </div>
                   </div>
-
                   <div className="flex justify-end gap-2 mt-4">
                     <button onClick={onClose} className="px-3 py-2 rounded-xl border">Cancel</button>
                     <button onClick={()=>{
-                        if(!creatorName || !area){ alert("Please fill at least Creator and Area."); return; }
-                        const post = {
-                          id: (typeof defaults?.id!=="undefined" ? defaults.id : crypto.randomUUID()),
-                          type, creatorName: creatorName.trim(), area: area.trim(),
-                          day: day.trim(), time: time.trim(), location: location.trim(),
-                          slots: Math.max(1, slots||1),
-                          signups: defaults?.signups || [],
-                          notes: notes.trim(),
-                          createdAt: defaults?.createdAt || Date.now(),
-                        };
-                        onSave(post);
-                      }}
-                      className="px-3 py-2 rounded-xl bg-slate-900 text-white">Save</button>
+                      if(!creatorName || !area){ alert("Please fill at least Creator and Area."); return; }
+                      const post = {
+                        id: (typeof defaults?.id!=="undefined" ? defaults.id : crypto.randomUUID()),
+                        type, creatorName: creatorName.trim(), area: area.trim(),
+                        day: day.trim(), time: time.trim(), location: location.trim(),
+                        slots: Math.max(1, slots||1),
+                        signups: defaults?.signups || [],
+                        notes: notes.trim(),
+                        createdAt: defaults?.createdAt || Date.now(),
+                      };
+                      onSave(post);
+                    }} className="px-3 py-2 rounded-xl bg-slate-900 text-white">Save</button>
                   </div>
                 </div>
               </div>
             );
           }
 
-          // ---------------- ANNOUNCEMENTS BOARD (GUIDES ONLY CREATE) ----------------
+          // ---------------- ANNOUNCEMENTS (NOW EVERYONE CAN POST) ----------------
           function AnnouncementsBoard({ guideMode }) {
             const [items, setItems] = useState(()=>{
               const saved = localStorage.getItem("acton_announcements");
               return saved ? JSON.parse(saved) : [];
             });
             const [show, setShow] = useState(false);
-            const [def, setDef] = useState(null); // edit defaults
+            const [def, setDef] = useState(null);
 
             useEffect(()=>{ localStorage.setItem("acton_announcements", JSON.stringify(items)); },[items]);
 
@@ -453,11 +384,9 @@ def home():
               <div className="-mt-2">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-extrabold text-slate-800">Announcements</h2>
-                  {guideMode && (
-                    <button onClick={()=>setShow(true)} className="px-4 py-2 rounded-2xl bg-fuchsia-600 text-white shadow hover:bg-fuchsia-700">
-                      + New Announcement
-                    </button>
-                  )}
+                  <button onClick={()=>setShow(true)} className="px-4 py-2 rounded-2xl bg-fuchsia-600 text-white shadow hover:bg-fuchsia-700">
+                    + New Announcement
+                  </button>
                 </div>
 
                 {items.length===0 ? (
@@ -472,13 +401,10 @@ def home():
                           <div className="font-bold text-lg">{it.title}</div>
                           {it.subtitle && <div className="text-slate-600 mt-0.5">{it.subtitle}</div>}
                           {it.body && <p className="mt-2 text-slate-700">{it.body}</p>}
-
-                          {guideMode && (
-                            <div className="flex gap-2 mt-3">
-                              <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=>{ setDef(it); setShow(true); }}>Edit</button>
-                              <button className="px-2 py-1 rounded-lg border text-xs text-rose-600 hover:bg-rose-50" onClick={()=>remove(it.id)}>Delete</button>
-                            </div>
-                          )}
+                          <div className="flex gap-2 mt-3">
+                            <button className="px-2 py-1 rounded-lg border text-xs" onClick={()=>{ setDef(it); setShow(true); }}>Edit</button>
+                            <button className="px-2 py-1 rounded-lg border text-xs text-rose-600 hover:bg-rose-50" onClick={()=>remove(it.id)}>Delete</button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -495,16 +421,10 @@ def home():
             const [subtitle, setSubtitle] = useState(defaults?.subtitle || "");
             const [body, setBody] = useState(defaults?.body || "");
             const [image, setImage] = useState(defaults?.image || "");
-
-            // read file as DataURL into localStorage
             function handleFile(e){
-              const file = e.target.files?.[0];
-              if(!file) return;
-              const reader = new FileReader();
-              reader.onload = () => setImage(String(reader.result));
-              reader.readAsDataURL(file);
+              const file = e.target.files?.[0]; if(!file) return;
+              const reader = new FileReader(); reader.onload = () => setImage(String(reader.result)); reader.readAsDataURL(file);
             }
-
             return (
               <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
                 <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-5">
@@ -512,7 +432,6 @@ def home():
                     <h3 className="text-xl font-bold">{defaults ? "Edit Announcement" : "New Announcement"}</h3>
                     <button className="px-2 py-1 rounded-lg border text-xs" onClick={onClose}>Close</button>
                   </div>
-
                   <div className="grid sm:grid-cols-2 gap-3 mt-3">
                     <div className="sm:col-span-2">
                       <label className="block text-xs text-slate-500 mb-1">Title</label>
@@ -530,37 +449,20 @@ def home():
                       <label className="block text-xs text-slate-500 mb-1">Photo (optional)</label>
                       <input type="file" accept="image/*" onChange={handleFile} className="w-full" />
                     </div>
-                    {image && (
-                      <div>
-                        <div className="text-xs text-slate-500 mb-1">Preview</div>
-                        <img src={image} className="w-full h-40 object-cover rounded-xl border" />
-                      </div>
-                    )}
+                    {image && (<div><div className="text-xs text-slate-500 mb-1">Preview</div><img src={image} className="w-full h-40 object-cover rounded-xl border" /></div>)}
                   </div>
-
                   <div className="flex justify-end gap-2 mt-4">
                     <button className="px-3 py-2 rounded-xl border" onClick={onClose}>Cancel</button>
-                    <button
-                      className="px-3 py-2 rounded-xl bg-fuchsia-600 text-white"
-                      onClick={()=>{
-                        if(!title.trim()){ alert("Please add a title."); return; }
-                        onSave({
-                          id: defaults?.id || crypto.randomUUID(),
-                          title: title.trim(),
-                          subtitle: subtitle.trim(),
-                          body: body.trim(),
-                          image: image || "",
-                          createdAt: defaults?.createdAt || Date.now(),
-                        });
-                      }}
-                    >Save</button>
+                    <button className="px-3 py-2 rounded-xl bg-fuchsia-600 text-white" onClick={()=>{
+                      if(!title.trim()){ alert("Please add a title."); return; }
+                      onSave({ id: defaults?.id || crypto.randomUUID(), title: title.trim(), subtitle: subtitle.trim(), body: body.trim(), image: image || "", createdAt: defaults?.createdAt || Date.now() });
+                    }}>Save</button>
                   </div>
                 </div>
               </div>
             );
           }
 
-          // ------------ render
           ReactDOM.createRoot(document.getElementById('root')).render(<App />);
         </script>
       </body>
@@ -569,5 +471,5 @@ def home():
     return Response(html, mimetype="text/html")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))  # 8000 works for Railway; 5000 local is fine too
+    port = int(os.environ.get("PORT", 8000))  # Railway uses 8000
     app.run(host="0.0.0.0", port=port, debug=True)
