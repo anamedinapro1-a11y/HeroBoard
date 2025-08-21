@@ -18,30 +18,48 @@ def home():
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
 
-        <!-- Tailwind CDN (with config BEFORE the script) -->
+        <!-- Tailwind config BEFORE CDN -->
         <script>
-          tailwind = {};            /* avoid reference errors */
-          tailwind.config = {
-            theme: { extend: { fontFamily: { display: ['Poppins','ui-sans-serif','system-ui'] } } }
-          }
+          window.tailwind = {
+            config: {
+              theme: { extend: { fontFamily: { display: ['Poppins','ui-sans-serif','system-ui'] } } }
+            }
+          };
         </script>
         <script src="https://cdn.tailwindcss.com"></script>
 
-        <!-- React + ReactDOM + Babel -->
-        <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-        <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+        <!-- React (production UMD) + Babel -->
+        <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+        <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
         <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+        <!-- tiny runtime error helper -->
+        <script>
+          window.addEventListener('error', (e) => {
+            const box = document.getElementById('root');
+            if (box && !box.dataset.ok) box.innerHTML =
+              '<div style="padding:16px;color:#b91c1c;background:#fee2e2;border-radius:12px;max-width:800px;margin:24px auto;font-family:system-ui">'+
+              '<b>Script error:</b> ' + (e.message||'Unknown') + '</div>';
+          });
+          window.addEventListener('unhandledrejection', (e) => {
+            const box = document.getElementById('root');
+            if (box && !box.dataset.ok) box.innerHTML =
+              '<div style="padding:16px;color:#b91c1c;background:#fee2e2;border-radius:12px;max-width:800px;margin:24px auto;font-family:system-ui">'+
+              '<b>Promise error:</b> ' + (e.reason && e.reason.message ? e.reason.message : e.reason) + '</div>';
+          });
+        </script>
       </head>
       <body class="bg-slate-50 font-display text-[17px] sm:text-[18px]">
-        <div id="root"></div>
+        <div id="root">Loading…</div>
 
-        <script type="text/babel">
+        <!-- ⭐️ IMPORTANT: react preset added -->
+        <script type="text/babel" data-presets="react">
           const { useState, useEffect, useMemo } = React;
           const GUIDE_PIN = "guide123";
 
           function App() {
             const [guideMode, setGuideMode] = useState(false);
-            const [activeTab, setActiveTab] = useState("board"); // 'board' | 'ann'
+            const [activeTab, setActiveTab] = useState("board");
             return (
               <div className="min-h-screen">
                 <HeroHeader />
@@ -52,9 +70,11 @@ def home():
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                   />
-                  {activeTab === "board"
-                    ? <CommunityServiceBoard outerGuideMode={guideMode} />
-                    : <AnnouncementsBoard guideMode={guideMode} />}
+                  {activeTab === "board" ? (
+                    <CommunityServiceBoard outerGuideMode={guideMode} />
+                  ) : (
+                    <AnnouncementsBoard />
+                  )}
                   <Footer />
                 </div>
               </div>
@@ -84,7 +104,7 @@ def home():
 
                 <div className="relative inline-block">
                   <button
-                    onClick={() => (guideMode ? setGuideMode(false) : setAsking(true))}  {/* FIXED: removed extra ) */}
+                    onClick={() => (guideMode ? setGuideMode(false) : setAsking(true))}
                     className={"px-4 py-2 rounded-2xl shadow-lg text-base " + (guideMode ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-white hover:bg-slate-50 border")}
                   >
                     {guideMode ? "Guide Mode: ON" : "Guide Mode"}
@@ -114,11 +134,9 @@ def home():
             );
           }
 
-          function Footer() {
-            return <div className="py-10 text-center text-sm text-slate-400">Made with ❤️ for Acton.</div>;
-          }
+          function Footer() { return <div className="py-10 text-center text-sm text-slate-400">Made with ❤️ for Acton.</div>; }
 
-          // ---------------- COMMUNITY SERVICE BOARD ----------------
+          // -------- Community Service Board --------
           function CommunityServiceBoard({ outerGuideMode }) {
             const [posts, setPosts] = useState(() => {
               const saved = localStorage.getItem("acton_cs_posts");
@@ -197,9 +215,7 @@ def home():
                       </tr>
                     </thead>
                     <tbody className="text-[16px]">
-                      {filtered.length===0 && (
-                        <tr><td colSpan={8} className="py-10 text-center text-slate-400">No posts yet. Click “New Post”.</td></tr>
-                      )}
+                      {filtered.length===0 && (<tr><td colSpan={8} className="py-10 text-center text-slate-400">No posts yet. Click “New Post”.</td></tr>)}
                       {filtered.map(p => (
                         <Row key={p.id} post={p}
                           onEdit={()=>{ setFormDefaults(p); setShowForm(true); }}
@@ -224,9 +240,7 @@ def home():
             );
           }
 
-          function Th({ children }) {
-            return <th className="px-3 py-3 font-semibold uppercase tracking-wide">{children}</th>;
-          }
+          function Th({ children }) { return <th className="px-3 py-3 font-semibold uppercase tracking-wide">{children}</th>; }
 
           function Row({ post, onEdit, onDelete, onSignUp, guideMode }) {
             const full = (post.signups?.length || 0) >= (post.slots || 1);
@@ -359,8 +373,8 @@ def home():
             );
           }
 
-          // ---------------- ANNOUNCEMENTS (NOW EVERYONE CAN POST) ----------------
-          function AnnouncementsBoard({ guideMode }) {
+          // -------- Announcements (anyone can post) --------
+          function AnnouncementsBoard() {
             const [items, setItems] = useState(()=>{
               const saved = localStorage.getItem("acton_announcements");
               return saved ? JSON.parse(saved) : [];
@@ -384,9 +398,7 @@ def home():
               <div className="-mt-2">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-extrabold text-slate-800">Announcements</h2>
-                  <button onClick={()=>setShow(true)} className="px-4 py-2 rounded-2xl bg-fuchsia-600 text-white shadow hover:bg-fuchsia-700">
-                    + New Announcement
-                  </button>
+                  <button onClick={()=>setShow(true)} className="px-4 py-2 rounded-2xl bg-fuchsia-600 text-white shadow hover:bg-fuchsia-700">+ New Announcement</button>
                 </div>
 
                 {items.length===0 ? (
@@ -463,7 +475,9 @@ def home():
             );
           }
 
-          ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+          const root = document.getElementById('root');
+          ReactDOM.createRoot(root).render(<App />);
+          root.dataset.ok = "1";
         </script>
       </body>
     </html>
@@ -471,5 +485,5 @@ def home():
     return Response(html, mimetype="text/html")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))  # Railway uses 8000
+    port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=True)
