@@ -1,525 +1,340 @@
-from flask import Flask, Response
+# main.py
+# FastAPI backend for Student Focus App
+# Features:
+# - Register user (no password) -> user_id
+# - Admin code verification to edit schedule
+# - CRUD-lite schedule (replace all blocks)
+# - Time-aware current block (/today)
+# - Drops: star/planet/comet on completion
+# - SQLite storage, CORS enabled
+
 import os
+import json
+import random
+import sqlite3
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional, Literal
 
-app = Flask(__name__)
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, validator
 
-@app.route("/")
-def home():
-    html = """
-    <!doctype html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>HeroBoard – Community Service & Announcements</title>
+# -------------------------
+# Config & setup
+# -------------------------
+DB_PATH = os.environ.get("DATABASE_PATH", "data.db")
+ADMIN_CODE = os.environ.get("ADMIN_CODE", "change-me")
+ALLOWED = os.environ.get("ALLOWED_ORIGINS", "*")
 
-        <!-- Google Font -->
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+app = FastAPI(title="Student Focus App API")
 
-        <!-- Tailwind config BEFORE CDN -->
-        <script>
-          window.tailwind = {
-            config: {
-              theme: { extend: { fontFamily: { display: ['Poppins','ui-sans-serif','system-ui'] } } }
-            }
-          };
-        </script>
-        <script src="https://cdn.tailwindcss.com"></script>
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if ALLOWED == "*" else [o.strip() for o in ALLOWED.split(",")],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-        <!-- React (production UMD) + Babel -->
-        <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-        <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-        <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-      </head>
-      <body class="bg-slate-50 font-display text-[17px] sm:text-[18px]">
-        <div id="root">Loading…</div>
 
-        <!-- JSX compiler -->
-        <script type="text/babel" data-presets="react">
-          const { useState, useEffect, useMemo } = React;
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-          function App() {
-            // current user (who am I?)
-            const [user, setUser] = useState(() => localStorage.getItem("acton_user") || "");
-            useEffect(() => { localStorage.setItem("acton_user", user); }, [user]);
 
-            const [activeTab, setActiveTab] = useState("board"); // 'board' | 'ann'
+def init_db():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL DEFAULT 'Default',
+        timezone TEXT DEFAULT 'America/Guatemala'
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS blocks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        schedule_id INTEGER NOT NULL,
+        day_of_week INTEGER NOT NULL, -- 0=Mon ... 6=Sun
+        start_min INTEGER NOT NULL,   -- minutes from 00:00 local
+        end_min INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        color TEXT DEFAULT NULL,
+        difficulty TEXT DEFAULT 'medium',
+        FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS drops (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        date TEXT NOT NULL,           -- YYYY-MM-DD
+        type TEXT NOT NULL,           -- star | planet | comet
+        label TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """)
+    # Ensure one default schedule exists
+    cur.execute("SELECT id FROM schedules LIMIT 1")
+    row = cur.fetchone()
+    if not row:
+        cur.execute("INSERT INTO schedules (title) VALUES ('Default')")
+        schedule_id = cur.lastrowid
+        # Seed a tiny example (Mon only)
+        seed = [
+            (schedule_id, 0, 16*60, 16*60+45, "Math Homework", None, "medium"),
+            (schedule_id, 0, 16*60+45, 17*60, "Break", None, "easy"),
+            (schedule_id, 0, 17*60, 17*60+40, "Science Reading", None, "hard"),
+            (schedule_id, 0, 18*60, 19*60, "Dance Practice", None, "hard"),
+        ]
+        cur.executemany(
+            "INSERT INTO blocks (schedule_id, day_of_week, start_min, end_min, title, color, difficulty) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            seed
+        )
+    conn.commit()
+    conn.close()
 
-            return (
-              <div className="min-h-screen">
-                <HeroHeader />
-                <div className="max-w-6xl mx-auto px-4 sm:px-6">
-                  <TopBar
-                    user={user}
-                    setUser={setUser}
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                  />
-                  {activeTab === "board"
-                    ? <CommunityServiceBoard currentUser={user} />
-                    : <AnnouncementsBoard currentUser={user} />}
-                  <Footer />
-                </div>
-              </div>
-            );
-          }
 
-          function HeroHeader() {
-            return (
-              <div className="bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-rose-500 text-white">
-                <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-                  <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight">HeroBoard</h1>
-                  <p className="mt-2 text-white/90 text-lg">Community Service Board & Announcements.</p>
-                </div>
-              </div>
-            );
-          }
+init_db()
 
-          function TopBar({ user, setUser, activeTab, setActiveTab }) {
-            return (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 -mt-8 sm:-mt-10 mb-6">
-                <div className="bg-white shadow-lg rounded-2xl p-1 inline-flex">
-                  <TabButton active={activeTab === "board"} onClick={() => setActiveTab("board")}>Community Service</TabButton>
-                  <TabButton active={activeTab === "ann"} onClick={() => setActiveTab("ann")}>Announcements</TabButton>
-                </div>
+# -------------------------
+# Models
+# -------------------------
+Difficulty = Literal["easy", "medium", "hard"]
 
-                <div className="bg-white border rounded-2xl shadow px-3 py-2 flex items-center gap-2">
-                  <span className="text-slate-500 text-sm">I am</span>
-                  <input
-                    value={user}
-                    onChange={(e)=>setUser(e.target.value)}
-                    placeholder="your name"
-                    className="px-3 py-2 border rounded-xl text-sm"
-                    style={{minWidth:"12rem"}}
-                  />
-                </div>
-              </div>
-            );
-          }
+class RegisterReq(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
 
-          function TabButton({ active, children, onClick }) {
-            return (
-              <button
-                onClick={onClick}
-                className={"px-4 sm:px-6 py-2 rounded-xl text-base font-semibold transition " +
-                  (active ? "bg-slate-900 text-white shadow" : "text-slate-600 hover:bg-slate-100")}
-              >
-                {children}
-              </button>
-            );
-          }
+class RegisterRes(BaseModel):
+    user_id: int
+    name: str
 
-          function Footer() { return <div className="py-10 text-center text-sm text-slate-400">Made with ❤️ for Acton.</div>; }
+class AdminVerifyReq(BaseModel):
+    admin_code: str
 
-          // -------- Community Service Board --------
-          function CommunityServiceBoard({ currentUser }) {
-            const [posts, setPosts] = useState(() => {
-              const saved = localStorage.getItem("acton_cs_posts");
-              if (saved) return JSON.parse(saved);
-              return [
-                { id: crypto.randomUUID(), type: "student", creatorName: "Rafci", area: "Khan",  day: "19 de ago", time: "C.C 11:00", location: "C.C", notes: "", slots: 1, signups: [], createdAt: Date.now(), owner: "Rafci" },
-                { id: crypto.randomUUID(), type: "student", creatorName: "Paul",  area: "Khan",  day: "19 de ago", time: "C.C",        location: "C.C", notes: "", slots: 1, signups: [], createdAt: Date.now(), owner: "Paul" },
-                { id: crypto.randomUUID(), type: "student", creatorName: "Anika", area: "Vocab", day: "21 de ago", time: "C.C",        location: "C.C", notes: "", slots: 1, signups: [], createdAt: Date.now(), owner: "Anika" },
-                { id: crypto.randomUUID(), type: "guide",   creatorName: "Guide Team", area: "Library sorting", day: "Fri", time: "10:30–11:30", location: "Library", notes: "Need 2 volunteers", slots: 2, signups: [], createdAt: Date.now(), owner: "Guide Team" },
-              ];
-            });
-            const [showForm, setShowForm] = useState(false);
-            const [formDefaults, setFormDefaults] = useState(null);
-            const [query, setQuery] = useState("");
-            const [typeFilter, setTypeFilter] = useState("all");
-            const [signTarget, setSignTarget] = useState(null); // opens big centered modal
+class OkRes(BaseModel):
+    ok: bool
 
-            useEffect(()=>{ localStorage.setItem("acton_cs_posts", JSON.stringify(posts)); },[posts]);
+class Block(BaseModel):
+    # minutes from 00:00 local (e.g., 8:30 => 510)
+    day_of_week: int = Field(ge=0, le=6)
+    start_min: int = Field(ge=0, le=24*60-1)
+    end_min: int = Field(ge=1, le=24*60)
+    title: str
+    color: Optional[str] = None
+    difficulty: Difficulty = "medium"
 
-            const filtered = useMemo(()=>{
-              const q = query.trim().toLowerCase();
-              return posts
-                .filter(p => typeFilter==="all" ? true : p.type===typeFilter)
-                .filter(p => !q ? true : [p.creatorName,p.area,p.day,p.time,p.location,p.notes].join(" ").toLowerCase().includes(q))
-                .sort((a,b)=>b.createdAt-a.createdAt);
-            },[posts, query, typeFilter]);
+    @validator("end_min")
+    def end_after_start(cls, v, values):
+        if "start_min" in values and v <= values["start_min"]:
+            raise ValueError("end_min must be greater than start_min")
+        return v
 
-            function addOrUpdate(post){
-              const withOwner = { owner: post.owner || currentUser || post.creatorName || "unknown", ...post };
-              setPosts(prev=>{
-                const idx = prev.findIndex(x=>x.id===withOwner.id);
-                if(idx===-1) return [withOwner, ...prev];
-                const next=[...prev]; next[idx]=withOwner; return next;
-              });
-              setShowForm(false); setFormDefaults(null);
-            }
-            function remove(id){
-              setPosts(prev=>prev.filter(p=>p.id!==id));
-            }
-            function signUp(post, name){
-              if(!name) return;
-              const already = post.signups.some(s=>s.toLowerCase()===name.toLowerCase());
-              if(already) return alert("You already signed up for this.");
-              if(post.signups.length>=(post.slots||1)) return alert("Slots are full.");
-              addOrUpdate({ ...post, signups:[...post.signups, name] });
-            }
-            function exportCSV(){
-              const header=["Type","Creator","Area","Day","Time","Location","Slots","Signups","Notes","Owner"];
-              const rows = posts.map(p=>[p.type,p.creatorName,p.area,p.day,p.time,p.location||"",p.slots||1,p.signups.join("; "), (p.notes||"").replaceAll(",", ";"), p.owner||""]);
-              const csv=[header,...rows].map(r=>r.join(",")).join("\\n");
-              const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob);
-              const a=document.createElement("a"); a.href=url; a.download="community_service_board.csv"; a.click(); URL.revokeObjectURL(url);
-            }
+class ScheduleRes(BaseModel):
+    schedule_id: int
+    title: str
+    blocks: List[Block]
 
-            return (
-              <div className="-mt-2">
-                <div className="flex flex-wrap items-center gap-3 mb-4">
-                  <button onClick={()=>setShowForm(true)} className="px-4 py-2 rounded-2xl bg-indigo-600 text-white shadow hover:bg-indigo-700">+ New Post</button>
-                  <button onClick={exportCSV} className="px-4 py-2 rounded-2xl bg-white border shadow hover:bg-slate-50">Export CSV</button>
+class ReplaceScheduleReq(BaseModel):
+    title: Optional[str] = None
+    admin_code: str
+    blocks: List[Block]
 
-                  <div className="ml-auto grid gap-3 sm:grid-cols-3 w-full sm:w-auto">
-                    <input
-                      placeholder="Search name, area, day, time, location…"
-                      value={query} onChange={e=>setQuery(e.target.value)}
-                      className="sm:col-span-2 px-3 py-2 rounded-xl border shadow-sm focus:outline-none focus:ring w-full"
-                    />
-                    <select value={typeFilter} onChange={(e)=>setTypeFilter(e.target.value)} className="px-3 py-2 rounded-xl border shadow-sm">
-                      <option value="all">All posts</option>
-                      <option value="student">Community cervice</option>
-                      <option value="guide">Extra jobs</option>
-                    </select>
-                  </div>
-                </div>
+class TodayQuery(BaseModel):
+    tz_offset_minutes: Optional[int] = None  # client offset from UTC (e.g., -360 for GMT-6)
+    now_iso: Optional[str] = None            # for testing (ISO string)
 
-                <div className="overflow-x-auto rounded-2xl shadow ring-1 ring-slate-200 bg-white">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-100 text-slate-700 text-sm">
-                      <tr>
-                        <Th>Role</Th><Th>Eagle / Creator</Th><Th>Area of Help</Th><Th>Day</Th><Th>Time</Th><Th>Location</Th><Th>Sign ups</Th><Th>Actions</Th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-[16px]">
-                      {filtered.length===0 && (<tr><td colSpan={8} className="py-10 text-center text-slate-400">No posts yet. Click “New Post”.</td></tr>)}
-                      {filtered.map(p => (
-                        <Row
-                          key={p.id}
-                          post={p}
-                          currentUser={currentUser}
-                          onEdit={()=>{ setFormDefaults(p); setShowForm(true); }}
-                          onDelete={()=>remove(p.id)}
-                          onOpenSignUp={()=>setSignTarget(p)}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+class CurrentBlockRes(BaseModel):
+    current: Optional[Block]
+    minutes_left: Optional[int]
+    next_block_starts_in: Optional[int]
 
-                {showForm && (
-                  <PostForm
-                    defaults={formDefaults}
-                    onClose={()=>{ setShowForm(false); setFormDefaults(null); }}
-                    onSave={post=>addOrUpdate(post)}
-                    currentUser={currentUser}
-                  />
-                )}
+class CompleteReq(BaseModel):
+    user_id: int
+    block_title: str
+    difficulty: Difficulty
 
-                {signTarget && (
-                  <SignUpModal
-                    onClose={()=>setSignTarget(null)}
-                    onConfirm={(name)=>{ signUp(signTarget, name); setSignTarget(null); }}
-                    full={(signTarget.signups?.length||0) >= (signTarget.slots||1)}
-                  />
-                )}
-              </div>
-            );
-          }
+class DropRes(BaseModel):
+    type: Literal["star", "planet", "comet"]
+    label: str
 
-          function Th({ children }) { return <th className="px-3 py-3 font-semibold uppercase tracking-wide">{children}</th>; }
+# -------------------------
+# Helpers
+# -------------------------
+def is_admin(code: str) -> bool:
+    # Simple compare (for school project). For production, hash + constant-time compare.
+    return code == ADMIN_CODE
 
-          function Row({ post, currentUser, onEdit, onDelete, onOpenSignUp }) {
-            const full = (post.signups?.length || 0) >= (post.slots || 1);
-            const canDelete =
-              currentUser &&
-              post.owner &&
-              currentUser.trim().toLowerCase() === post.owner.trim().toLowerCase();
-            return (
-              <tr className="border-t">
-                <td className="px-3 py-3 align-top">
-                  <span className={"inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold " + (post.type==="guide" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800")}>
-                    {post.type==="guide" ? "Extra job" : "Community cervice"}
-                  </span>
-                </td>
-                <td className="px-3 py-3 align-top font-semibold text-slate-800">{post.creatorName}</td>
-                <td className="px-3 py-3 align-top">{post.area}</td>
-                <td className="px-3 py-3 align-top">{post.day}</td>
-                <td className="px-3 py-3 align-top">{post.time}</td>
-                <td className="px-3 py-3 align-top">{post.location || "—"}</td>
-                <td className="px-3 py-3 align-top">
-                  <div className="flex flex-wrap gap-1">
-                    {(post.signups || []).map((s,i)=>(<span key={i} className="px-2 py-0.5 rounded-xl bg-slate-100 text-slate-700 text-xs">{s}</span>))}
-                    {post.signups?.length===0 && <span className="text-slate-400 text-sm">No signups yet</span>}
-                  </div>
-                  <div className="text-xs text-slate-400 mt-1">Slots: {post.signups?.length || 0}/{post.slots || 1} {full && <span className="text-rose-500 font-semibold">(Full)</span>}</div>
-                </td>
-                <td className="px-3 py-3 align-top">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      disabled={full}
-                      onClick={onOpenSignUp}
-                      className={"px-2.5 py-1.5 rounded-lg text-xs shadow " + (full ? "bg-slate-200 text-slate-500" : "bg-slate-900 text-white hover:shadow-md")}
-                    >
-                      {full ? "Full" : "Sign up"}
-                    </button>
-                    <button onClick={onEdit} className="px-2.5 py-1.5 rounded-lg border text-xs hover:bg-slate-50">Edit</button>
-                    {canDelete && (
-                      <button onClick={onDelete} className="px-2.5 py-1.5 rounded-lg border text-xs hover:bg-rose-50 text-rose-600">Delete</button>
-                    )}
-                  </div>
-                  {post.owner && <div className="text-[11px] text-slate-400 mt-1">Owner: {post.owner}</div>}
-                  {post.notes && <div className="text-xs text-slate-500 mt-1">{post.notes}</div>}
-                </td>
-              </tr>
-            );
-          }
+def get_default_schedule_id(conn: sqlite3.Connection) -> int:
+    r = conn.execute("SELECT id FROM schedules ORDER BY id LIMIT 1").fetchone()
+    return int(r["id"])
 
-          // Big centered sign-up modal
-          function SignUpModal({ onClose, onConfirm, full }) {
-            const [name, setName] = useState("");
-            return (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6">
-                  <h3 className="text-2xl font-extrabold mb-1">Sign up</h3>
-                  <p className="text-slate-500 mb-4">Enter your name to reserve a spot.</p>
-                  <input
-                    value={name}
-                    onChange={(e)=>setName(e.target.value)}
-                    placeholder="Your name"
-                    className="w-full px-4 py-3 border rounded-2xl text-lg"
-                    disabled={full}
-                  />
-                  <div className="flex justify-end gap-3 mt-6">
-                    <button className="px-4 py-2 rounded-2xl border" onClick={onClose}>Cancel</button>
-                    <button
-                      className={"px-5 py-2 rounded-2xl text-white " + (full ? "bg-slate-300" : "bg-emerald-600 hover:bg-emerald-700")}
-                      onClick={()=>{ if(!full) onConfirm(name.trim()); }}
-                      disabled={full}
-                    >
-                      {full ? "Slots Full" : "Confirm"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          }
+def row_to_block(row: sqlite3.Row) -> Block:
+    return Block(
+        day_of_week=row["day_of_week"],
+        start_min=row["start_min"],
+        end_min=row["end_min"],
+        title=row["title"],
+        color=row["color"],
+        difficulty=row["difficulty"] or "medium"
+    )
 
-          function PostForm({ defaults, onSave, onClose, currentUser }) {
-            const [type, setType] = useState(defaults?.type || "student");  // student (Community cervice) or guide (Extra job)
-            const [creatorName, setCreatorName] = useState(defaults?.creatorName || (currentUser || ""));
-            const [area, setArea] = useState(defaults?.area || "");
-            const [day, setDay] = useState(defaults?.day || "");
-            const [time, setTime] = useState(defaults?.time || "");
-            const [location, setLocation] = useState(defaults?.location || "");
-            const [slots, setSlots] = useState(defaults?.slots || 1);
-            const [notes, setNotes] = useState(defaults?.notes || "");
+def parse_local_now(tz_offset_minutes: Optional[int], now_iso: Optional[str]) -> datetime:
+    if now_iso:
+        try:
+            dt = datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid now_iso: {e}")
+    else:
+        dt = datetime.now(timezone.utc)
+    if tz_offset_minutes is None:
+        # Default Guatemala time (UTC-6) if not provided
+        offset = -6 * 60
+    else:
+        offset = tz_offset_minutes
+    return dt.astimezone(timezone(timedelta(minutes=offset)))
 
-            return (
-              <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4">
-                <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <h2 className="text-xl font-bold">{defaults ? "Edit Post" : "New Post"}</h2>
-                    <button onClick={onClose} className="px-2.5 py-1.5 rounded-lg border text-xs">Close</button>
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Post type</label>
-                      <select value={type} onChange={(e)=>setType(e.target.value)} className="w-full px-3 py-2 border rounded-xl">
-                        <option value="student">Community cervice</option>
-                        <option value="guide">Extra job</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Eagle / Creator name</label>
-                      <input value={creatorName} onChange={(e)=>setCreatorName(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Area of help</label>
-                      <input value={area} onChange={(e)=>setArea(e.target.value)} placeholder="e.g., Khan / Vocab / Library / Garden" className="w-full px-3 py-2 border rounded-xl" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Day</label>
-                      <input value={day} onChange={(e)=>setDay(e.target.value)} placeholder="e.g., 21 de ago / Mon" className="w-full px-3 py-2 border rounded-xl" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Time</label>
-                      <input value={time} onChange={(e)=>setTime(e.target.value)} placeholder="e.g., 11:00–11:30" className="w-full px-3 py-2 border rounded-xl" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Location</label>
-                      <input value={location} onChange={(e)=>setLocation(e.target.value)} placeholder="e.g., C.C, Library, Studio" className="w-full px-3 py-2 border rounded-xl" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Slots (max volunteers)</label>
-                      <input type="number" min={1} value={slots} onChange={(e)=>setSlots(parseInt(e.target.value||"1"))} className="w-full px-3 py-2 border rounded-xl" />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs text-slate-500 mb-1">Notes (optional)</label>
-                      <textarea rows={3} value={notes} onChange={(e)=>setNotes(e.target.value)} placeholder="Any extra info, materials to bring, etc." className="w-full px-3 py-2 border rounded-xl" />
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2 mt-4">
-                    <button onClick={onClose} className="px-3 py-2 rounded-xl border">Cancel</button>
-                    <button onClick={()=>{
-                      if(!creatorName || !area){ alert("Please fill at least Creator and Area."); return; }
-                      const post = {
-                        id: (typeof defaults?.id!=="undefined" ? defaults.id : crypto.randomUUID()),
-                        type,
-                        creatorName: creatorName.trim(),
-                        area: area.trim(),
-                        day: day.trim(),
-                        time: time.trim(),
-                        location: location.trim(),
-                        slots: Math.max(1, slots||1),
-                        signups: defaults?.signups || [],
-                        notes: notes.trim(),
-                        createdAt: defaults?.createdAt || Date.now(),
-                        owner: (defaults?.owner) || (currentUser || creatorName || "unknown"),
-                      };
-                      onSave(post);
-                    }} className="px-3 py-2 rounded-xl bg-slate-900 text-white">Save</button>
-                  </div>
-                </div>
-              </div>
-            );
-          }
+# -------------------------
+# Routes
+# -------------------------
+@app.post("/auth/register", response_model=RegisterRes)
+def register(req: RegisterReq):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO users (name) VALUES (?)", (req.name,))
+    user_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return RegisterRes(user_id=user_id, name=req.name)
 
-          // -------- Announcements (Instagram-style cards) --------
-          function AnnouncementsBoard({ currentUser }) {
-            const [items, setItems] = useState(()=>{
-              const saved = localStorage.getItem("acton_announcements");
-              return saved ? JSON.parse(saved) : [];
-            });
-            const [show, setShow] = useState(false);
-            const [def, setDef] = useState(null);
+@app.post("/auth/admin/verify", response_model=OkRes)
+def admin_verify(req: AdminVerifyReq):
+    return OkRes(ok=is_admin(req.admin_code))
 
-            useEffect(()=>{ localStorage.setItem("acton_announcements", JSON.stringify(items)); },[items]);
+@app.get("/schedule", response_model=ScheduleRes)
+def get_schedule():
+    conn = get_db()
+    sid = get_default_schedule_id(conn)
+    cur = conn.cursor()
+    row_sched = cur.execute("SELECT id, title FROM schedules WHERE id=?", (sid,)).fetchone()
+    rows = cur.execute(
+        "SELECT day_of_week, start_min, end_min, title, color, difficulty FROM blocks WHERE schedule_id=? ORDER BY day_of_week, start_min",
+        (sid,)
+    ).fetchall()
+    conn.close()
+    return ScheduleRes(
+        schedule_id=sid,
+        title=row_sched["title"],
+        blocks=[row_to_block(r) for r in rows]
+    )
 
-            function save(it){
-              const withOwner = { owner: (def?.owner) || (currentUser || "unknown"), ...it };
-              setItems(prev=>{
-                const idx = prev.findIndex(x=>x.id===withOwner.id);
-                if(idx===-1) return [withOwner, ...prev];
-                const next=[...prev]; next[idx]=withOwner; return next;
-              });
-              setShow(false); setDef(null);
-            }
-            function remove(id){ setItems(prev=>prev.filter(x=>x.id!==id)); }
+@app.put("/schedule", response_model=OkRes)
+def replace_schedule(req: ReplaceScheduleReq):
+    if not is_admin(req.admin_code):
+        raise HTTPException(status_code=403, detail="Invalid admin code")
+    conn = get_db()
+    cur = conn.cursor()
+    sid = get_default_schedule_id(conn)
+    if req.title:
+        cur.execute("UPDATE schedules SET title=? WHERE id=?", (req.title, sid))
+    # Replace all blocks
+    cur.execute("DELETE FROM blocks WHERE schedule_id=?", (sid,))
+    cur.executemany(
+        "INSERT INTO blocks (schedule_id, day_of_week, start_min, end_min, title, color, difficulty) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [(sid, b.day_of_week, b.start_min, b.end_min, b.title, b.color, b.difficulty) for b in req.blocks]
+    )
+    conn.commit()
+    conn.close()
+    return OkRes(ok=True)
 
-            return (
-              <div className="-mt-2">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-extrabold text-slate-800">Announcements</h2>
-                  <button onClick={()=>{ setDef(null); setShow(true); }} className="px-4 py-2 rounded-2xl bg-fuchsia-600 text-white shadow hover:bg-fuchsia-700">+ New Announcement</button>
-                </div>
+@app.post("/today", response_model=CurrentBlockRes)
+def today(q: TodayQuery):
+    conn = get_db()
+    sid = get_default_schedule_id(conn)
+    local_now = parse_local_now(q.tz_offset_minutes, q.now_iso)
+    dow = (local_now.weekday())  # Mon=0
+    minutes_now = local_now.hour * 60 + local_now.minute
+    rows = conn.execute(
+        "SELECT day_of_week, start_min, end_min, title, color, difficulty FROM blocks WHERE schedule_id=? AND day_of_week=? ORDER BY start_min",
+        (sid, dow)
+    ).fetchall()
+    conn.close()
 
-                {items.length===0 ? (
-                  <div className="text-slate-400 text-center py-10">No announcements yet.</div>
-                ) : (
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {items.map(it=>{
-                      const canEdit =
-                        currentUser &&
-                        it.owner &&
-                        currentUser.trim().toLowerCase() === it.owner.trim().toLowerCase();
-                      return (
-                        <div key={it.id} className="bg-white rounded-3xl shadow ring-1 ring-slate-200 overflow-hidden">
-                          {it.image
-                            ? <img src={it.image} className="w-full aspect-[4/3] object-cover" alt="" />
-                            : <div className="w-full aspect-[4/3] bg-gradient-to-br from-slate-100 to-slate-200" />}
-                          <div className="p-6">
-                            <div className="text-xs text-slate-400 mb-2">{new Date(it.createdAt).toLocaleString()}</div>
-                            <div className="font-extrabold text-2xl leading-tight">{it.title}</div>
-                            {it.subtitle && <div className="text-slate-600 mt-1 text-lg">{it.subtitle}</div>}
-                            {it.body && <p className="mt-3 text-slate-700 text-[17px] leading-relaxed">{it.body}</p>}
-                            <div className="text-[12px] text-slate-400 mt-3">Owner: {it.owner || "unknown"}</div>
-                            {canEdit && (
-                              <div className="flex gap-2 mt-4">
-                                <button className="px-3 py-2 rounded-xl border text-sm" onClick={()=>{ setDef(it); setShow(true); }}>Edit</button>
-                                <button className="px-3 py-2 rounded-xl border text-sm text-rose-600 hover:bg-rose-50" onClick={()=>remove(it.id)}>Delete</button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+    current_row = None
+    next_row = None
+    for r in rows:
+        if r["start_min"] <= minutes_now < r["end_min"]:
+            current_row = r
+            break
+        if r["start_min"] > minutes_now and next_row is None:
+            next_row = r
 
-                {show && <AnnouncementForm defaults={def} onClose={()=>{ setShow(false); setDef(null); }} onSave={save} />}
-              </div>
-            );
-          }
+    if current_row:
+        minutes_left = current_row["end_min"] - minutes_now
+        return CurrentBlockRes(
+            current=row_to_block(current_row),
+            minutes_left=minutes_left,
+            next_block_starts_in=None
+        )
+    else:
+        if next_row:
+            return CurrentBlockRes(
+                current=None,
+                minutes_left=None,
+                next_block_starts_in=next_row["start_min"] - minutes_now
+            )
+        return CurrentBlockRes(current=None, minutes_left=None, next_block_starts_in=None)
 
-          function AnnouncementForm({ defaults, onClose, onSave }) {
-            const [title, setTitle] = useState(defaults?.title || "");
-            const [subtitle, setSubtitle] = useState(defaults?.subtitle || "");
-            const [body, setBody] = useState(defaults?.body || "");
-            const [image, setImage] = useState(defaults?.image || "");
-            function handleFile(e){
-              const file = e.target.files?.[0]; if(!file) return;
-              const reader = new FileReader(); reader.onload = () => setImage(String(reader.result)); reader.readAsDataURL(file);
-            }
-            return (
-              <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
-                <div className="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-6">
-                  <div className="flex items-start justify-between">
-                    <h3 className="text-2xl font-extrabold">{defaults ? "Edit Announcement" : "New Announcement"}</h3>
-                    <button className="px-3 py-2 rounded-xl border text-sm" onClick={onClose}>Close</button>
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-4 mt-4">
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs text-slate-500 mb-1">Title</label>
-                      <input value={title} onChange={(e)=>setTitle(e.target.value)} className="w-full px-4 py-3 border rounded-2xl text-lg" />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs text-slate-500 mb-1">Subtitle (optional)</label>
-                      <input value={subtitle} onChange={(e)=>setSubtitle(e.target.value)} className="w-full px-4 py-3 border rounded-2xl" />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs text-slate-500 mb-1">Body</label>
-                      <textarea rows={5} value={body} onChange={(e)=>setBody(e.target.value)} className="w-full px-4 py-3 border rounded-2xl" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Photo (optional)</label>
-                      <input type="file" accept="image/*" onChange={handleFile} className="w-full" />
-                    </div>
-                    {image && (<div><div className="text-xs text-slate-500 mb-1">Preview</div><img src={image} className="w-full aspect-[4/3] object-cover rounded-2xl border" /></div>)}
-                  </div>
-                  <div className="flex justify-end gap-2 mt-5">
-                    <button className="px-4 py-2 rounded-2xl border" onClick={onClose}>Cancel</button>
-                    <button className="px-4 py-2 rounded-2xl bg-fuchsia-600 text-white" onClick={()=>{
-                      if(!title.trim()){ alert("Please add a title."); return; }
-                      onSave({
-                        id: defaults?.id || crypto.randomUUID(),
-                        title: title.trim(),
-                        subtitle: subtitle.trim(),
-                        body: body.trim(),
-                        image: image || "",
-                        createdAt: defaults?.createdAt || Date.now(),
-                        owner: defaults?.owner // set in save()
-                      });
-                    }}>Save</button>
-                  </div>
-                </div>
-              </div>
-            );
-          }
+@app.post("/complete", response_model=DropRes)
+def complete(req: CompleteReq):
+    # Decide drop type
+    rare = random.random() < 0.05
+    if rare:
+        drop_type = "comet"
+    else:
+        drop_type = "planet" if req.difficulty == "hard" else "star"
 
-          const root = document.getElementById('root');
-          ReactDOM.createRoot(root).render(<App />);
-          root.dataset.ok = "1";
-        </script>
-      </body>
-    </html>
-    """
-    return Response(html, mimetype="text/html")
+    # Label
+    if drop_type == "planet":
+        # Planet A, B, C ...
+        label = f"Planet {chr(65 + random.randint(0, 25))}"
+    elif drop_type == "comet":
+        label = "Comet ✨"
+    else:
+        label = "Star ⭐"
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))  # Railway uses 8000
-    app.run(host="0.0.0.0", port=port, debug=True)
+    # Save
+    conn = get_db()
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    conn.execute(
+        "INSERT INTO drops (user_id, date, type, label, created_at) VALUES (?, ?, ?, ?, ?)",
+        (req.user_id, today_str, drop_type, label, datetime.now(timezone.utc).isoformat())
+    )
+    conn.commit()
+    conn.close()
+    return DropRes(type=drop_type, label=label)
+
+@app.get("/drops/today")
+def drops_today(user_id: int):
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, type, label, created_at FROM drops WHERE user_id=? AND date=? ORDER BY created_at DESC",
+        (user_id, today_str)
+    ).fetchall()
+    conn.close()
+    return [{"id": r["id"], "type": r["type"], "label": r["label"], "created_at": r["created_at"]} for r in rows]
+
+# Health check for Railway
+@app.get("/health")
+def health():
+    return {"ok": True}
