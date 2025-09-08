@@ -1,29 +1,28 @@
 # main.py
-# FastAPI backend for Student Focus App
+# FastAPI backend for Student Focus App (HeroBoard)
 # Features:
 # - Register user (no password) -> user_id
-# - Admin code verification to edit schedule
-# - CRUD-lite schedule (replace all blocks)
-# - Time-aware current block (/today)
+# - Admin code verification to unlock schedule editing
+# - Replace/get schedule blocks
+# - Time-aware /today endpoint (current block by local time)
 # - Drops: star/planet/comet on completion
-# - SQLite storage, CORS enabled
+# - SQLite storage, CORS enabled, Railway-ready
 
 import os
-import json
 import random
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Literal
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 
 # -------------------------
-# Config & setup
+# Config
 # -------------------------
 DB_PATH = os.environ.get("DATABASE_PATH", "data.db")
-ADMIN_CODE = os.environ.get("ADMIN_CODE", "change-me")
+ADMIN_CODE = os.environ.get("ADMIN_CODE", "change-me")  # set this on Railway!
 ALLOWED = os.environ.get("ALLOWED_ORIGINS", "*")
 
 app = FastAPI(title="Student Focus App API")
@@ -36,12 +35,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
-
 
 def init_db():
     conn = get_db()
@@ -64,7 +61,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         schedule_id INTEGER NOT NULL,
         day_of_week INTEGER NOT NULL, -- 0=Mon ... 6=Sun
-        start_min INTEGER NOT NULL,   -- minutes from 00:00 local
+        start_min INTEGER NOT NULL,   -- minutes after 00:00
         end_min INTEGER NOT NULL,
         title TEXT NOT NULL,
         color TEXT DEFAULT NULL,
@@ -83,13 +80,11 @@ def init_db():
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     )
     """)
-    # Ensure one default schedule exists
-    cur.execute("SELECT id FROM schedules LIMIT 1")
-    row = cur.fetchone()
+    # seed one schedule with example Monday blocks if none exist
+    row = cur.execute("SELECT id FROM schedules LIMIT 1").fetchone()
     if not row:
         cur.execute("INSERT INTO schedules (title) VALUES ('Default')")
         schedule_id = cur.lastrowid
-        # Seed a tiny example (Mon only)
         seed = [
             (schedule_id, 0, 16*60, 16*60+45, "Math Homework", None, "medium"),
             (schedule_id, 0, 16*60+45, 17*60, "Break", None, "easy"),
@@ -102,7 +97,6 @@ def init_db():
         )
     conn.commit()
     conn.close()
-
 
 init_db()
 
@@ -125,8 +119,7 @@ class OkRes(BaseModel):
     ok: bool
 
 class Block(BaseModel):
-    # minutes from 00:00 local (e.g., 8:30 => 510)
-    day_of_week: int = Field(ge=0, le=6)
+    day_of_week: int = Field(ge=0, le=6)    # 0=Mon ... 6=Sun
     start_min: int = Field(ge=0, le=24*60-1)
     end_min: int = Field(ge=1, le=24*60)
     title: str
@@ -150,8 +143,8 @@ class ReplaceScheduleReq(BaseModel):
     blocks: List[Block]
 
 class TodayQuery(BaseModel):
-    tz_offset_minutes: Optional[int] = None  # client offset from UTC (e.g., -360 for GMT-6)
-    now_iso: Optional[str] = None            # for testing (ISO string)
+    tz_offset_minutes: Optional[int] = None  # client offset from UTC (e.g., -360 for UTC-6)
+    now_iso: Optional[str] = None            # for testing
 
 class CurrentBlockRes(BaseModel):
     current: Optional[Block]
@@ -171,7 +164,6 @@ class DropRes(BaseModel):
 # Helpers
 # -------------------------
 def is_admin(code: str) -> bool:
-    # Simple compare (for school project). For production, hash + constant-time compare.
     return code == ADMIN_CODE
 
 def get_default_schedule_id(conn: sqlite3.Connection) -> int:
@@ -190,15 +182,11 @@ def row_to_block(row: sqlite3.Row) -> Block:
 
 def parse_local_now(tz_offset_minutes: Optional[int], now_iso: Optional[str]) -> datetime:
     if now_iso:
-        try:
-            dt = datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid now_iso: {e}")
+        dt = datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
     else:
         dt = datetime.now(timezone.utc)
     if tz_offset_minutes is None:
-        # Default Guatemala time (UTC-6) if not provided
-        offset = -6 * 60
+        offset = -6 * 60  # default to Guatemala (UTC-6)
     else:
         offset = tz_offset_minutes
     return dt.astimezone(timezone(timedelta(minutes=offset)))
@@ -246,7 +234,6 @@ def replace_schedule(req: ReplaceScheduleReq):
     sid = get_default_schedule_id(conn)
     if req.title:
         cur.execute("UPDATE schedules SET title=? WHERE id=?", (req.title, sid))
-    # Replace all blocks
     cur.execute("DELETE FROM blocks WHERE schedule_id=?", (sid,))
     cur.executemany(
         "INSERT INTO blocks (schedule_id, day_of_week, start_min, end_min, title, color, difficulty) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -261,7 +248,7 @@ def today(q: TodayQuery):
     conn = get_db()
     sid = get_default_schedule_id(conn)
     local_now = parse_local_now(q.tz_offset_minutes, q.now_iso)
-    dow = (local_now.weekday())  # Mon=0
+    dow = local_now.weekday()  # Mon=0
     minutes_now = local_now.hour * 60 + local_now.minute
     rows = conn.execute(
         "SELECT day_of_week, start_min, end_min, title, color, difficulty FROM blocks WHERE schedule_id=? AND day_of_week=? ORDER BY start_min",
@@ -296,23 +283,19 @@ def today(q: TodayQuery):
 
 @app.post("/complete", response_model=DropRes)
 def complete(req: CompleteReq):
-    # Decide drop type
     rare = random.random() < 0.05
     if rare:
         drop_type = "comet"
     else:
         drop_type = "planet" if req.difficulty == "hard" else "star"
 
-    # Label
     if drop_type == "planet":
-        # Planet A, B, C ...
         label = f"Planet {chr(65 + random.randint(0, 25))}"
     elif drop_type == "comet":
         label = "Comet ✨"
     else:
         label = "Star ⭐"
 
-    # Save
     conn = get_db()
     today_str = datetime.now(timezone.utc).date().isoformat()
     conn.execute(
@@ -334,7 +317,6 @@ def drops_today(user_id: int):
     conn.close()
     return [{"id": r["id"], "type": r["type"], "label": r["label"], "created_at": r["created_at"]} for r in rows]
 
-# Health check for Railway
 @app.get("/health")
 def health():
     return {"ok": True}
